@@ -29,8 +29,8 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.policies import ActorCriticPolicy
 
 # from stable_baselines3.common.utils import set_random_seed
-from task_generator.robot_manager import init_robot_managers
-from task_generator.tasks import get_task_manager, init_obstacle_manager
+from task_generator.task_generator.robot_manager import init_robot_managers
+from task_generator.task_generator.tasks import get_task_manager, init_obstacle_manager
 from training.tools import train_agent_utils
 
 # from .custom_mlp_utils import get_act_fn
@@ -95,11 +95,12 @@ hyperparams = {
 
 def load_config(config_name: str) -> dict:
     """
-    Load config parameters from config file
+    Load config parameters from config 
     """
     config_location = os.path.join(
         rospkg.RosPack().get_path("training"), "configs", config_name
     )
+    print(f'train_agent_utils.py: load_config(): {config_location=}')
     with open(config_location, "r", encoding="utf-8") as target:
         config = yaml.load(target, Loader=yaml.FullLoader)
 
@@ -140,6 +141,9 @@ def create_training_setup(config: dict, wandb_logger) -> dict:
 
     # create seperate model instances for each robot
     for robot_name, robot_train_params in config["robots"].items():
+        print('\n\n----------------------------------------\n',
+        robot_train_params['resume'],
+        '\n---------------------------------\n\n\n')
         # generate agent name and model specific paths
         agent_name = (
             robot_train_params["resume"].split("/")[-1]
@@ -265,6 +269,7 @@ def create_deployment_setup(config: dict) -> dict:
         ns="eval_sim",
         mode=config["task_mode"],
         curriculum_path=config["evaluation_curriculum"]["evaluation_curriculum_file"],
+        cases_grid_map=config["cases_grid_map_path"]
     )
 
     ### create and set obstacle manager
@@ -273,6 +278,9 @@ def create_deployment_setup(config: dict) -> dict:
 
     ### create seperate model instances for each robot
     for robot_name, robot_train_params in config["robots"].items():
+        print('\n\n----------------------------------------\n',
+        robot_train_params['resume'],
+        '\n---------------------------------\n\n\n')
         ### generate agent name and model specific paths
         agent_name = (
             robot_train_params["resume"].split("/")[-1]
@@ -678,6 +686,7 @@ def get_paths(
     dir = rospkg.RosPack().get_path("rosnav")
     training = rospkg.RosPack().get_path("training")
     simulation_setup = rospkg.RosPack().get_path("arena-simulation-setup")
+
 
     PATHS = {
         "model": os.path.join(dir, "agents", marl_dir, agent_name)

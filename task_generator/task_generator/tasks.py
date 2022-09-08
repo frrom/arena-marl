@@ -15,6 +15,7 @@ from filelock import FileLock
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.srv import GetMap
 from std_msgs.msg import Bool
+from geometry_msgs.msg import Pose2D
 
 from .obstacles_manager import ObstaclesManager
 from .robot_manager import RobotManager
@@ -275,6 +276,105 @@ class StagedMARLRandomTask(RandomMARLTask):
     def _remove_obstacles(self):
         self.obstacles_manager.remove_obstacles()
 
+from arena_franknav.case_task_generator.scripts.task_gen1 import CaseTaskManager as ctm
+import numpy as np
+class CasesMARLTask(ABSMARLTask):
+
+    
+    """Sets a randomly drawn start and goal position for each robot episodically."""
+
+    def __init__(
+        self,
+        obstacles_manager: ObstaclesManager,
+        robot_manager: Dict[str, List[RobotManager]],
+        map_grid_path: Union[np.ndarray, str], # 2D numpy array representing the quadrants or file location
+    ):
+        if type(map_grid_path) is str:
+            map_grid = np.load(map_grid_path)
+        elif type(map_grid_path) is np.ndarray:
+            map_grid = map_grid_path
+        self.ctm = ctm(map_grid)
+
+        super().__init__(obstacles_manager, robot_manager)
+        self._num_robots = (
+            count_robots(self.robot_manager) if type(self.robot_manager) is dict else 0
+        )
+        self.reset_flag = (
+            {key: False for key in self.robot_manager.keys()}
+            if type(self.robot_manager) is dict
+            else {}
+        )
+
+    def add_robot_manager(self, robot_type: str, managers: List[RobotManager]):
+        assert type(managers) is list
+        if not self.robot_manager:
+            self.robot_manager = {}
+        self.robot_manager[robot_type] = managers
+        self._num_robots = count_robots(self.robot_manager)
+        self.reset_flag = {key: False for key in self.robot_manager.keys()}
+
+    def numpy_to_Pose2D(self, array, theta = 0):
+        pose = Pose2D()
+        pose.x = array[1]
+        pose.y = array[0]
+        pose.theta = theta
+
+        return pose
+
+    def get_available_task(self, manager: RobotManager):
+        crate_locations = self.ctm.active_crates.get_crate_locations()
+        # TODO: choose location that's closest to the robot (do they know their odometry?)
+        crate = self.ctm.pickup_crate(crate_locations[0], manager)
+        start = self.numpy_to_Pose2D(crate.current_location, manager.ROBOT_RADIUS * 1.5)
+        goal = self.numpy_to_Pose2D(crate.goal, manager.ROBOT_RADIUS * 1.5)
+
+        return start, goal
+
+    def reset(self, robot_type: str):
+        assert robot_type in self.robot_manager, f"Unknown robot type: {robot_type},"
+        f" robot has to be one of the following types: {self.robot_manager.keys()}"
+
+        self.reset_flag[robot_type] = True
+        if not all(self.reset_flag.values()):
+            return
+
+        self.ctm.generate_scenareo(nr_tasks=self._num_robots, type= 'random')
+
+        with self._map_lock:
+            max_fail_times = 5
+            fail_times = 0
+            while fail_times < max_fail_times:
+                try:
+                    starts, goals = [None] * self._num_robots, [None] * self._num_robots
+                    robot_idx = 0
+                    for robot_type, robot_managers in self.robot_manager.items():
+                        for manager in robot_managers:
+                            start, goal = self.get_available_task(manager)
+                            print(f'Task:\n\t start:{start}, goal:{goal}')
+                            manager.set_start_pos_goal_pos(start, goal)
+                            starts[robot_idx] = (
+                                start.x,
+                                start.y,
+                                manager.ROBOT_RADIUS * 2.25,
+                            )
+                            goals[robot_idx] = (
+                                goal.x,
+                                goal.y,
+                                manager.ROBOT_RADIUS * 2.25,
+                            )
+                            robot_idx += 1
+                    self.obstacles_manager.reset_pos_obstacles_random(
+                        forbidden_zones=starts + goals
+                    )
+                    break
+                except rospy.ServiceException as e:
+                    rospy.logwarn(repr(e))
+                    fail_times += 1
+            if fail_times == max_fail_times:
+                raise Exception("reset error!")
+
+        self.reset_flag = dict.fromkeys(self.reset_flag, False)
+
 
 @unique
 class ARENA_TASKS(Enum):
@@ -282,6 +382,7 @@ class ARENA_TASKS(Enum):
     RANDOM = "random"
     STAGED = "staged"
     SCENARIO = "scenario"
+    CASES = "cases"
 
 
 def get_mode(mode: str) -> ARENA_TASKS:
@@ -354,6 +455,7 @@ def get_task_manager(
     mode: str,
     curriculum_path: dict,
     start_stage: int = 1,
+    cases_grid_map: np.ndarray = None,
 ) -> ABSMARLTask:
     """Function to return desired navigation task manager.
 
@@ -375,6 +477,9 @@ def get_task_manager(
     task_mode = get_mode(mode)
 
     task = None
+    if task_mode == ARENA_TASKS.CASES:
+        rospy.set_param("/task_mode", "cases")
+        task = CasesMARLTask(None, None, cases_grid_map)
     if task_mode == ARENA_TASKS.MANUAL:
         raise NotImplementedError
     if task_mode == ARENA_TASKS.RANDOM:
