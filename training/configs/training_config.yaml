@@ -58,7 +58,7 @@ eval_log: false
 # use tensorboard
 tb: false
 # use wandb
-wandb: true
+wandb: false
 
 robots:
   jackal:
@@ -81,7 +81,7 @@ robots:
   #   resume: null
   ridgeback:
     # number of robots of this type
-    num_robots: 3
+    num_robots: 1
     # name of hyperparameter file located in the configs/hyperparameters directory
     hyperparameter_file: "ridgeback.json" # "default.json"
     # name of architecture defined in the Policy factory

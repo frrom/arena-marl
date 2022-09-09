@@ -6,7 +6,7 @@ debug_mode: true
 n_envs: 1
 # gpu yes or no
 no_gpu: false
-
+wandb: false
 
 ### Global configuration that applies to all robots
 # navigation task mode, chose from "random" or "staged"
@@ -47,7 +47,7 @@ robots:
     # name of architecture defined in the Policy factory
     architecture_name: "AGENT_24"
     # path to trained model that will be loaded for evaluation
-    resume: "/home/ignc/MARL_ws/src/planners/rosnav/agents/jackal"
+    resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/jackal"
   burger:
     # number of robots of this type
     num_robots: 2
@@ -56,7 +56,7 @@ robots:
     # name of architecture defined in the Policy factory
     architecture_name: "AGENT_24"
     # path to latest checkpoint; if provided the training will be resumed from that checkpoint
-    resume: "/home/ignc/MARL_ws/src/planners/rosnav/agents/burger"
+    resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/burger"
   # rto:
   #   # number of robots of this type
   #   num_robots: 2
