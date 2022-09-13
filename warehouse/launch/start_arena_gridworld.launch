@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+  <!-- ___________ ARGS ___________ -->
+  <arg name="model" default="burger" doc="robot model type [burger, jackal, ridgeback, agvota, rto, ...]"/>
+  <arg name="local_planner" default="teb" doc="local planner type [teb, dwa, mpc, rlca, arena, rosnav]"/>
+  
+  <arg name="agent_name" default="$(arg model)"     doc = "DRL agent name to be deployed" unless="$(eval arg('local_planner') != 'rosnav')"/>
+  <arg name="task_mode" default="random" doc="[random, manual, staged, scenario]" />
+  <arg name="visualization" default="rviz" doc="[rviz, flatland]" />
+  
+  <arg name="rviz_file" default="nav"/>
+  
+  <arg name="auto_reset" default="true"/>
+
+  <arg name="shelf_cols" default="5"/>
+  <arg name="shelf_rows" default="3"/>
+  <arg name="col_height" default="3"/>
+  <arg name="bigger_highways" default="True"/>
+
+  <arg name="node_start_delay" default="100.0" />  
+  <arg name="scenario_file" default="test_scenario.json" />
+  <arg name="map_file" default="gridworld" doc="[map1, floor, indoor, indoor_map1, map_small, map_empty, gridworld]"/>
+  <arg name="map_path" default="$(find arena-simulation-setup)/maps/$(arg map_file)/map.yaml"  />
+  
+
+  <!-- ___________ PARAMS ___________ -->
+  <param name="use_sim_time" value="true"/>
+
+  <param name="model" value="$(arg model)" />
+
+  <param name="task_mode" value="$(arg task_mode)" />
+  <param name="map_path" value="$(arg map_path)" />
+  <param name="train_mode" value="false" />
+  <param name="local_planner" value="$(arg local_planner)"/>
+  <param name="model" value="$(arg model)" />
+  <param name="agent_name" value="$(arg agent_name)" unless="$(eval arg('local_planner') != 'rosnav')"/>
+
+  <rosparam command="load" file="$(find arena_bringup)/params/flatland.yaml" />
+
+  <rosparam command="load" file="$(find arena-simulation-setup)/robot/$(arg model)/model_params.yaml" /> 
+  <param name="robot_yaml_path" value="$(find arena-simulation-setup)/robot/$(arg model)/$(arg model).model.yaml" />
+  <param name="tmp_model_path" value="/tmp" />
+
+  <!-- the folder name under the path arena-simulation-setup/maps  -->
+  <param name="world_path" value="$(find arena-simulation-setup)/maps/$(arg map_file)/map.world.yaml" />
+  <param name="map_layer_path" value="$(find arena-simulation-setup)/maps/$(arg map_file)/map_layer.yaml" />
+  <param name="map_file" value="$(arg map_file)" />
+
+  <!-- DRL action frequency -->
+  <rosparam command="load" file="$(find arena_bringup)/params/drl.yaml" />
+
+  <!-- Map parameters -->
+  <arg name="global_frame_id" value="map"/>
+  <arg name="odom_frame_id" value="odom"/>
+
+  <param name="robot_name" value="$(arg model)" />
+
+  <!-- Gridworld Nodes, start Map_server from map_creator -->
+  <node name="map_creator" pkg="warehouse" type="gridworld.py" output="screen" clear_params="true">
+              <param name="shelf_cols" value="$(arg shelf_cols)" /> 
+              <param name="shelf_rows" value="$(arg shelf_rows)" /> 
+              <param name="col_height" value="$(arg col_height)" /> 
+              <param name="bigger_highways" value="$(arg bigger_highways)" /> 
+        </node>
+
+  <node name="map_node" pkg="warehouse" type="map_node.py" output="screen" clear_params="true">           
+        </node>
+
+  <node name="grid_vis" pkg="warehouse" type="rviz_visualization.py" output="screen" clear_params="true">
+                <param name="map_path" value="$(arg map_path)" />
+         </node>
+  
+  <node name="task_manager_f" pkg="warehouse" type="task_gen1.py" output="screen" clear_params="true">
+         </node>
+  
+
+  <!-- map server-->
+  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_path)">
+    <param name="frame_id" value="$(arg global_frame_id)"/>
+  </node>
+
+  <!-- data recorder -->
+  <param name="local_planner"  value="$(arg local_planner)"/>
+  <param name="scenario_file"  value="$(arg scenario_file)"/>
+
+  <!-- use simulator-->
+  <include file="$(find arena_bringup)/launch/testing/flatland_simulator.launch">
+    <arg name="visualization" default="$(arg visualization)" />
+    <arg name="rviz_file" value="$(arg rviz_file)" />
+    <arg name="model" value="$(arg model)" />
+  </include>
+
+
+  <!-- Fake localization-->
+  <include file="$(find arena_bringup)/launch/utils/fake_localization.launch">
+    <arg name="global_frame_id" value="$(arg global_frame_id)" />
+    <arg name="odom_frame_id" value="$(arg odom_frame_id)" />
+  </include>
+
+  <include file="$(find arena_bringup)/launch/testing/task_generator.launch">
+    <arg name="scenario_json_path" value="$(find task-generator)/scenarios/$(arg scenario_file)"/>
+    <arg name="auto_reset" value="$(arg auto_reset)"/>
+  </include>
+
+  <include file="$(find arena_bringup)/launch/testing/sensor_sim.launch" />
+
+  <!-- move_base plan manager: which provide basic global planner and cost map -->
+  <include file="$(find arena_bringup)/launch/testing/move_base/move_base_$(arg local_planner).launch">
+    <arg name="model" value="$(arg model)"/>
+    <arg name="agent_name" value="$(arg agent_name)" if="$(eval arg('local_planner') == 'rosnav')" />
+  </include>
+
+  <node name="pedsim_simulator" pkg="pedsim_simulator" type="pedsim_simulator" output="screen">
+    <param name="simulation_factor" value="1" type="double"/>
+    <param name="pedsim_update_rate" value="30.0" type="double"/>
+    <param name="scene_file" value="$(find task-generator)/scenarios/empty.xml" type="string"/>
+  </node>
+
+  <!-- launch map generator if training with random map-->
+  <group if="$(eval arg('map_file') == 'random_map')">
+    <node pkg="arena-simulation-setup" name="map_generator_node" type="map_generator_node.py" />
+  </group>
+
+
+
+</launch>
