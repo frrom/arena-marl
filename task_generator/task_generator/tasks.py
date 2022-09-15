@@ -345,10 +345,6 @@ class CasesMARLTask(ABSMARLTask):
             self.goal_pos_publisher.publish(open_tasks_list)
         
 
-
-
-
-
     def add_robot_manager(self, robot_type: str, managers: List[RobotManager]):
         assert type(managers) is list
         if not self.robot_manager:
@@ -356,23 +352,6 @@ class CasesMARLTask(ABSMARLTask):
         self.robot_manager[robot_type] = managers
         self._num_robots = count_robots(self.robot_manager)
         self.reset_flag = {key: False for key in self.robot_manager.keys()}
-
-    def numpy_to_Pose2D(self, array, theta = 0):
-        pose = Pose2D()
-        pose.x = array[1]
-        pose.y = array[0]
-        pose.theta = theta
-
-        return pose
-
-    def get_available_task(self, manager: RobotManager):
-        crate_locations = self.ctm.active_crates.get_crate_locations()
-        crate = self.ctm.pickup_crate(crate_locations[0], manager)
-        start = self.ctm.numpy_to_pose2d(crate.current_location, manager.ROBOT_RADIUS * 1.5)
-        goal = self.ctm.numpy_to_pose2d(crate.goal, manager.ROBOT_RADIUS * 1.5)
-
-        return start, goal
-
 
 
     def reset(self, robot_type: str):
@@ -384,6 +363,8 @@ class CasesMARLTask(ABSMARLTask):
             return
 
         self.ctm.generate_scenareo(nr_tasks=self._num_robots, type= 'random')
+        _, _robot_goals, _crate_goals = self.ctm.get_open_tasks()
+        robot_goals_iter, crate_goals_iter = iter(_robot_goals), iter(_crate_goals)
 
         with self._map_lock:
             max_fail_times = 5
@@ -395,13 +376,11 @@ class CasesMARLTask(ABSMARLTask):
                     for robot_type, robot_managers in self.robot_manager.items():
                         for manager in robot_managers:
                             manager: RobotManager = manager
-                            print(manager.robot_id)
-                            goal, crate_goal = self.get_available_task(manager)
+                            goal, crate_goal = next(robot_goals_iter), next(crate_goals_iter)
                             start = Pose2D()
                             start.x = 1
                             start.y = robot_idx * manager.ROBOT_RADIUS
                             start.theta= 0
-                            print(f'Task:\n\t start:{start}, goal:{goal}')
                             manager.set_start_pos_goal_pos(start, goal)
                             starts[robot_idx] = (
                                 start.x,

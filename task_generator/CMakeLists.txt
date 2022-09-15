@@ -14,10 +14,12 @@ add_message_files(
   FILES
   crate_action.msg
   robot_goal.msg
+  robot_goal_list.msg
 )
 
 generate_messages(
   DEPENDENCIES
+  task_generator
   std_msgs
   actionlib_msgs
   geometry_msgs

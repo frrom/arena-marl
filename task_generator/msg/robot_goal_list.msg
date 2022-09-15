@@ -1,1 +1,1 @@
-task_manager/robot_goal[] open_tasks # list of open tasks
+task_generator/robot_goal[] open_tasks # list of open tasks
