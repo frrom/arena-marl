@@ -11,7 +11,7 @@ or pass them from the command line.
 
 TODO: pass the arguments that are need in rest.launch also to map.launch and call rest.launch with them
 
-**Some Explantions*'
+**Some Explantions**
 The roslaunch command runs the map_(creation) node first and stores the created map in gridworld.
 After the map is created we call the rest.launch from the map_(creation) node.
 
