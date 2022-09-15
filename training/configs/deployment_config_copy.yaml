@@ -20,7 +20,7 @@ periodic_eval:
   # max number of steps per episode
   max_num_moves_per_eps: 1000
   # number of evaluation episodes
-  n_eval_episodes: 3 #100
+  n_eval_episodes: 4 #100
   # evaluation frequency, evaluation after every n_envs * 20000 timesteps
   eval_freq: 20000
 
