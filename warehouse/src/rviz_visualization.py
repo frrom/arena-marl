@@ -15,6 +15,8 @@ import rospy
 from rospy_tutorials.msg import Floats
 from rospy.numpy_msg import numpy_msg
 
+from nav_msgs.msg import OccupancyGrid
+
 WALL_COLOR=(0,0,0)
 FREE_SHELF_COLOR=(0.7,0.7,1)
 OCCUPIED_SHELF_COLOR=(0,0,1)
@@ -42,11 +44,10 @@ class Visualizer:
 
 
     def callback(self,data):
-        '''callback of the subscriber to convert the 1D message to a numpy array'''
-        w = rospy.get_param('/gridworld/width')
-        h = rospy.get_param('/gridworld/height')
-        self.map = np.reshape(data.data, [w,h]).astype(np.int32)
-        #print(rospy.get_name(), "I heard %s"%str(data.data))
+        w = data.info.width
+        h = data.info.height
+        self.map = np.reshape(np.asarray(data.data), [w,h])#.astype(np.int32)
+
         
 
     def create_marker(self, x,y, color):
@@ -98,13 +99,14 @@ class Visualizer:
         working_grid = copy.deepcopy(self.map)
         
         #Map Listener
-        Subscriber = rospy.Subscriber("gridworld", numpy_msg(Floats), self.callback)
+        Subscriber = rospy.Subscriber("gridworld", OccupancyGrid, self.callback)
 
         #Marker Publisher
         topic = 'visualization_marker_array'
         publisher = rospy.Publisher(topic, MarkerArray, queue_size=1000)
 
         rospy.init_node('visualizer', anonymous=True)
+        rate = rospy.Rate(0.1)
         print('----initialized nodes---')
 
         while not rospy.is_shutdown():
@@ -175,7 +177,9 @@ class Visualizer:
 
 if __name__ == "__main__":
     mapyaml = rospy.get_param('/grid_vis/map_path')
-    
+    print('----------------'+mapyaml+'-------------------------------')
+    for i in range(0,5):
+        print('--------------------------------')
     with open(mapyaml, "r") as stream:
         try:
             yaml_dict = yaml.safe_load(stream)
