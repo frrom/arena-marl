@@ -322,19 +322,22 @@ class CasesMARLTask(ABSMARLTask):
             crate = self.ctm.pickup_crate(msg.goal, robot) # crate at msg.goal is picked up by robot
             new_goal = crate.get_goal()
             robot.publish_goal(new_goal.x, new_goal.y, new_goal.theta)
+            self.publisher_task_status()
 
         elif action == crate_action.DROPOFF:
             self.ctm.drop_crate(msg.crate_id)
+            self.publisher_task_status()
 
-        elif action == crate_action.REQUEST:
-            ids, goals = self.ctm.get_open_tasks(generate= True)
+    def publisher_task_status(self):
+            ids, robot_goals, crate_goals = self.ctm.get_open_tasks(generate= True)
             open_tasks = []
-            for id, goal in zip(ids, goals):
+            for id, robot_goal, crate_goal in zip(ids, robot_goals, crate_goals):
                 task = robot_goal(
                     crate_action.ASSIGN,
                     id, self.ns,
                     '', '',
-                    goal
+                    robot_goal,
+                    crate_goal
                     )
                 open_tasks.append(task)
             open_tasks_list = robot_goal_list(open_tasks)
@@ -365,8 +368,8 @@ class CasesMARLTask(ABSMARLTask):
     def get_available_task(self, manager: RobotManager):
         crate_locations = self.ctm.active_crates.get_crate_locations()
         crate = self.ctm.pickup_crate(crate_locations[0], manager)
-        start = self.numpy_to_Pose2D(crate.current_location, manager.ROBOT_RADIUS * 1.5)
-        goal = self.numpy_to_Pose2D(crate.goal, manager.ROBOT_RADIUS * 1.5)
+        start = self.ctm.numpy_to_pose2d(crate.current_location, manager.ROBOT_RADIUS * 1.5)
+        goal = self.ctm.numpy_to_pose2d(crate.goal, manager.ROBOT_RADIUS * 1.5)
 
         return start, goal
 
