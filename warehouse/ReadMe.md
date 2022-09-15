@@ -1,19 +1,27 @@
 **Usage** 
+(No copy&pasting)
 
-Copy gridworld from example_grid to arena-simulation-setup/maps
+'roslaunch warehouse map_launch.launch'
 
-and specify the path in start_arena_flatland. 
 
-or
+Change the map attributes like shelf_cols, shelf_rows, col_height, bigger_highways, random_map in the launch file
+or pass them from the command line.
 
-Run the launch_file start_arena_gridworld.
 
-pass the number of shelfs in each row/coloumn and also
-the number of coloumns in each shelf as arguments and 
-run the launchfile (twice - the map generation needs longer 
-and the map server takes the old map) 
-	
-pass bigger_highways as arguments if the non_shelf spaces are to
-small for the robots
-	
-you might need to add a MarkersArray to visualize the Markers
+
+TODO: pass the arguments that are need in rest.launch also to map.launch and call rest.launch with them
+
+**Some Explantions*'
+The roslaunch command runs the map_(creation) node first and stores the created map in gridworld.
+After the map is created we call the rest.launch from the map_(creation) node.
+
+gridworld.py (also the map_node) publishes the numpy array of the map to the /gridworld_base topic as an OccupancyGrid.
+
+The temporary task manager (task_gen1.py, only for testing stuff on my end) then creates random tasks and publishes the updated map to /gridworld
+
+The Vis_node (rviz_visualization.py) gets the map from the /gridworld topic and creates the markers for the map.
+
+All gridworld topics are OccupancyGrids
+
+
+
