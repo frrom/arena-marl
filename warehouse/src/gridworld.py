@@ -7,30 +7,55 @@ import os
 import yaml
 import rospy
 
+#from map_generator_node.py
+from nav_msgs.msg import OccupancyGrid
+from std_msgs.msg import String
+
+import subprocess
+
 class Map:
     def __init__(self, shelf_columns=3, shelf_rows=3, column_height=3, bigger_highways=False, scale=11,
-                setup_name= None):
+                setup_name= None, update_map_server=False):
         self.shelf_columns = shelf_columns
         self.shelf_rows = shelf_rows
         self.column_height = column_height
         self.scale = scale
         self.setup_name = setup_name
+        self.update_map_server = update_map_server
 
-        self.grid = self.make_rware(self.shelf_columns, self.shelf_rows, self.column_height)
+        self.grid = None #self.make_rware(self.shelf_columns, self.shelf_rows, self.column_height)
 
-        if bigger_highways:
-            self.increase_highways()
+        self.grid_size = None #self.grid.shape
 
-        self.grid_size = self.grid.shape
-
-        self.map = self.generate_map(self.upscale_grid(self.grid,self.scale), self.column_height)
-        self.map = self.map2Occupancy()
+        self.map = None #self.generate_map(self.upscale_grid(self.grid,self.scale), self.column_height)
+        self.occupancy_grid = OccupancyGrid()
 
         rospack = rospkg.RosPack()
         self.path2setup = os.path.join(rospack.get_path('arena-simulation-setup'),'maps')
-
-        self.make_setup_folder()
         
+        rospy.init_node('gridworld')
+        self.gridpub = rospy.Publisher('gridworld_base', OccupancyGrid, queue_size=1)
+        
+        
+        if self.update_map_server:
+            self.setup_name = 'gridworld_random'
+            rospy.Subscriber('/map', OccupancyGrid, self.get_occupancy_grid)
+            rospy.Subscriber('/demand', String, self.new_episode_callback) # generate new random map for the next episode when entering new episode
+            self.mappub = rospy.Publisher('/map', OccupancyGrid, queue_size=1)
+
+        if not update_map_server:
+            self.make_gridworld()
+            self.make_setup_folder()
+            self.gridpub.publish(self.create_gridworld_message())
+        
+
+    def make_gridworld(self):
+        self.grid = self.make_rware(self.shelf_columns, self.shelf_rows, self.column_height)
+        if bigger_highways:
+            self.increase_highways()
+        self.map = self.generate_map(self.upscale_grid(self.grid,self.scale), self.column_height)
+        self.grid_size = self.grid.shape
+
 
     def make_setup_folder(self):
         '''create a setup folder including map.yaml, map.world.yaml, 
@@ -59,12 +84,11 @@ class Map:
         with open(setup_pth+'/map.yaml', 'w') as file:
             documents2 = yaml.dump(map_yaml, file)
 
+       
         cv.imwrite(os.path.join(self.path2setup, self.setup_name, 'map.png'),self.map)    
         np.save(setup_pth+'/grid', self.grid)
         
         
-        
-
     def map_coord_to_image(self,array_coordinates):
         '''returns the coordinates of the grid on the image'''
         scale_center = np.floor(self.scale/2)
@@ -182,24 +206,77 @@ class Map:
             self.grid = np.insert(self.grid, j+added_col_counter, 0, axis=0)
             added_col_counter+=1
 
-    def map2Occupancy(self):
-        return np.clip(self.map, -1, 100)        
+    def create_map_message(self):
+        w,h= self.map.shape
+        occgrid = OccupancyGrid()
+        occgrid.header.frame_id = 'map'
+        occgrid.info.resolution = 10.0
+        occgrid.info.width = w
+        occgrid.info.height = h
+
+        occgrid.info.origin.orientation.w = 1
+        occgrid.data = np.clip(self.map, -1, 100).astype(np.int32).flatten()
+        return occgrid
+
+    def create_gridworld_message(self):
+        w,h = self.grid.shape
+        occ_grid = OccupancyGrid()
+        occ_grid.info.width = w
+        occ_grid.info.height = h
+        occ_grid.data = self.grid.flatten()
+        return occ_grid
+
+    def get_occupancy_grid(self, occgrid_msg: OccupancyGrid): # a bit cheating: copy OccupancyGrid meta data from map_server of initial map
+        #self.occupancy_grid = occgrid_msg
+        #dont need the message
+        return occgrid_msg
+
+    def new_episode_callback(self, msg: String):
+        try:
+            print('we are in random')
+            if self.update_map_server:
+                self.shelf_rows = 5
+                self.shelf_cols = 5
+                self.col_height = 3
+                self.make_gridworld()
+                #self.make_setup_folder()
+
+            print('old grid', self.grid.shape)
+            self.gridpub.publish(self.create_gridworld_message())
+            self.occupancy_grid= self.create_map_message()
+
+            print('new grid', self.grid.shape)
+            print()
+            # rospy.loginfo("New random map generated for episode {}.".format(self.nr))
+            self.mappub.publish(self.occupancy_grid)
+            bashCommand = "rosservice call /move_base/clear_costmaps"
+            subprocess.Popen(bashCommand.split(), stdout=subprocess.PIPE)
+            rospy.loginfo("New random map published and costmap cleared.")
+        except rospy.ROSException as e:
+            print(e)
 
 
 
 import roslaunch
 from nav_msgs.msg import OccupancyGrid
-
-
+import time
 if __name__ == '__main__':
     shelf_rows = rospy.get_param('/map_creator/shelf_rows')
     shelf_cols = rospy.get_param('/map_creator/shelf_cols')
     col_height = rospy.get_param('/map_creator/col_height')
     bigger_highways = rospy.get_param('/map_creator/bigger_highways')
+    update_map_server = False#rospy.get_param('/map_creator/bigger_highways')
+    print(shelf_cols,shelf_rows)
+    grid = Map(shelf_columns=shelf_cols, shelf_rows=shelf_rows, column_height=col_height, bigger_highways=bigger_highways, update_map_server=update_map_server)
+    #msg = String()
+    #time.sleep(2)
+    #grid.new_episode_callback(msg)
+    import ipdb;ipdb.set_trace()
+    print(grid.grid)
+    rospy.spin()
+            
 
 
-    grid = Map(shelf_columns=shelf_cols, shelf_rows=shelf_rows, column_height=col_height, bigger_highways=bigger_highways)
-    grid.increase_highways()
 
 
 
