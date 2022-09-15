@@ -1,0 +1,17 @@
+<launch>
+
+  <arg name="shelf_cols" default="7"/>
+  <arg name="shelf_rows" default="7"/>
+  <arg name="col_height" default="7"/>
+  <arg name="bigger_highways" default="True"/>
+  <arg name="random_map" default="False"/>
+  <!-- Gridworld Nodes, start Map_server from map_creator -->
+  <node name="map_creator" pkg="warehouse" type="gridworld.py" output="screen" clear_params="true">
+              <param name="shelf_cols" value="$(arg shelf_cols)" /> 
+              <param name="shelf_rows" value="$(arg shelf_rows)" /> 
+              <param name="col_height" value="$(arg col_height)" /> 
+              <param name="bigger_highways" value="$(arg bigger_highways)" /> 
+              <param name="random_map" value="$(arg random_map)" /> 
+        </node>
+
+</launch>
