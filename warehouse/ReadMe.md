@@ -1,7 +1,8 @@
 **Usage** 
-(No copy&pasting)
 
-'roslaunch warehouse map_launch.launch'
+```
+roslaunch warehouse map_launch.launch
+```
 
 
 Change the map attributes like shelf_cols, shelf_rows, col_height, bigger_highways, random_map in the launch file
