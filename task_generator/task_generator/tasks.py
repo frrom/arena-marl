@@ -278,6 +278,8 @@ class StagedMARLRandomTask(RandomMARLTask):
 
 from arena_franknav.case_task_generator.scripts.task_gen1 import CaseTaskManager as ctm
 import numpy as np
+from task_generator.msg import robot_goal, crate_action, robot_goal_list
+
 class CasesMARLTask(ABSMARLTask):
 
     
@@ -287,13 +289,12 @@ class CasesMARLTask(ABSMARLTask):
         self,
         obstacles_manager: ObstaclesManager,
         robot_manager: Dict[str, List[RobotManager]],
-        map_grid_path: Union[np.ndarray, str], # 2D numpy array representing the quadrants or file location
+        map_grid_path: str,
+        ns: str,
     ):
-        if type(map_grid_path) is str:
-            map_grid = np.load(map_grid_path)
-        elif type(map_grid_path) is np.ndarray:
-            map_grid = map_grid_path
-        self.ctm = ctm(map_grid)
+        self.ns = ns
+        self.ctm = ctm(map_grid_path)
+        self._freq = 1/float(rospy.get_param('step_size'))
 
         super().__init__(obstacles_manager, robot_manager)
         self._num_robots = (
@@ -304,6 +305,46 @@ class CasesMARLTask(ABSMARLTask):
             if type(self.robot_manager) is dict
             else {}
         )
+        self.goal_reached_subscriber = rospy.Subscriber(f'{self.ns}/goals', robot_goal, self.subscriber_goal_status)
+        self.goal_pos_publisher = rospy.Publisher(f'{self.ns}/open_tasks', robot_goal_list)
+    
+    def subscriber_goal_status(self, msg: robot_goal):
+        action = msg.crate_action.action
+        robots = self.robot_manager[msg.robot_type]
+        robots: List[RobotManager] = robots
+        for robot in robots:
+            if robot.robot_id == msg.robot_id:
+                break
+        else:
+            raise ValueError(f'Robot: type: {msg.robot_type} id: "{msg.robot_id}" is not recognized.')
+
+        if action == crate_action.PICKUP:
+            crate = self.ctm.pickup_crate(msg.goal, robot) # crate at msg.goal is picked up by robot
+            new_goal = crate.get_goal()
+            robot.publish_goal(new_goal.x, new_goal.y, new_goal.theta)
+
+        elif action == crate_action.DROPOFF:
+            self.ctm.drop_crate(msg.crate_id)
+
+        elif action == crate_action.REQUEST:
+            ids, goals = self.ctm.get_open_tasks(generate= True)
+            open_tasks = []
+            for id, goal in zip(ids, goals):
+                task = robot_goal(
+                    crate_action.ASSIGN,
+                    id, self.ns,
+                    '', '',
+                    goal
+                    )
+                open_tasks.append(task)
+            open_tasks_list = robot_goal_list(open_tasks)
+
+            self.goal_pos_publisher.publish(open_tasks_list)
+        
+
+
+
+
 
     def add_robot_manager(self, robot_type: str, managers: List[RobotManager]):
         assert type(managers) is list
@@ -323,12 +364,13 @@ class CasesMARLTask(ABSMARLTask):
 
     def get_available_task(self, manager: RobotManager):
         crate_locations = self.ctm.active_crates.get_crate_locations()
-        # TODO: choose location that's closest to the robot (do they know their odometry?)
         crate = self.ctm.pickup_crate(crate_locations[0], manager)
         start = self.numpy_to_Pose2D(crate.current_location, manager.ROBOT_RADIUS * 1.5)
         goal = self.numpy_to_Pose2D(crate.goal, manager.ROBOT_RADIUS * 1.5)
 
         return start, goal
+
+
 
     def reset(self, robot_type: str):
         assert robot_type in self.robot_manager, f"Unknown robot type: {robot_type},"
@@ -345,11 +387,17 @@ class CasesMARLTask(ABSMARLTask):
             fail_times = 0
             while fail_times < max_fail_times:
                 try:
-                    starts, goals = [None] * self._num_robots, [None] * self._num_robots
+                    starts, goals, crate_goals = [None] * self._num_robots, [None] * self._num_robots, [None] * self._num_robots
                     robot_idx = 0
                     for robot_type, robot_managers in self.robot_manager.items():
                         for manager in robot_managers:
-                            start, goal = self.get_available_task(manager)
+                            manager: RobotManager = manager
+                            print(manager.robot_id)
+                            goal, crate_goal = self.get_available_task(manager)
+                            start = Pose2D()
+                            start.x = 1
+                            start.y = robot_idx * manager.ROBOT_RADIUS
+                            start.theta= 0
                             print(f'Task:\n\t start:{start}, goal:{goal}')
                             manager.set_start_pos_goal_pos(start, goal)
                             starts[robot_idx] = (
@@ -362,9 +410,14 @@ class CasesMARLTask(ABSMARLTask):
                                 goal.y,
                                 manager.ROBOT_RADIUS * 2.25,
                             )
+                            crate_goals[robot_idx] = (
+                                crate_goal.x,
+                                crate_goal.y,
+                                manager.ROBOT_RADIUS * 2.25,
+                            )
                             robot_idx += 1
                     self.obstacles_manager.reset_pos_obstacles_random(
-                        forbidden_zones=starts + goals
+                        forbidden_zones=starts + goals + crate_goals 
                     )
                     break
                 except rospy.ServiceException as e:
@@ -461,7 +514,7 @@ def get_task_manager(
 
     Args:
         ns (str): Environments' ROS namespace. There should only be one env per ns.
-        mode (str): avigation task mode for the agents. Modes to chose from: ['random', 'staged']. \
+        mode (str): avigation task mode for the agents. Modes to chose from: ['random', 'staged', 'cases']. \
             Defaults to "random".
         robot_ids (List[str]): List containing all robots' names in order to address the right namespaces.
         start_stage (int, optional): Starting difficulty level for the learning curriculum. Defaults to 1.
@@ -479,7 +532,7 @@ def get_task_manager(
     task = None
     if task_mode == ARENA_TASKS.CASES:
         rospy.set_param("/task_mode", "cases")
-        task = CasesMARLTask(None, None, cases_grid_map)
+        task = CasesMARLTask(None, None, cases_grid_map, ns)
     if task_mode == ARENA_TASKS.MANUAL:
         raise NotImplementedError
     if task_mode == ARENA_TASKS.RANDOM:

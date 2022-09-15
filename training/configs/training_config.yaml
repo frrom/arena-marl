@@ -1,9 +1,9 @@
 # in debug_mode no agent directories will be created and no models will be saved
-debug_mode: false
+debug_mode: true
 
 # Hardware specifc configurations
 # number of parallel environments
-n_envs: 12
+n_envs: 2
 # gpu yes or no
 no_gpu: no
 
@@ -58,7 +58,7 @@ eval_log: false
 # use tensorboard
 tb: false
 # use wandb
-wandb: true
+wandb: false
 
 robots:
   jackal:
@@ -70,15 +70,15 @@ robots:
     architecture_name: "AGENT_24"
     # path to latest checkpoint; if provided the training will be resumed from that checkpoint
     resume: null
-  # rto:
-  #   # number of robots of this type
-  #   num_robots: 3
-  #   # name of hyperparameter file located in the configs/hyperparameters directory
-  #   hyperparameter_file: "rto.json"
-  #   # name of architecture defined in the Policy factory
-  #   architecture_name: "AGENT_24"
-  #   # path to latest checkpoint; if provided the training will be resumed from that checkpoint
-  #   resume: null
+  rto:
+    # number of robots of this type
+    num_robots: 3
+    # name of hyperparameter file located in the configs/hyperparameters directory
+    hyperparameter_file: "rto.json"
+    # name of architecture defined in the Policy factory
+    architecture_name: "AGENT_24"
+    # path to latest checkpoint; if provided the training will be resumed from that checkpoint
+    resume: null
   ridgeback:
     # number of robots of this type
     num_robots: 3

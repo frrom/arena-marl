@@ -886,7 +886,7 @@ def choose_agent_model(
         agent: Union[
             Type[BaseAgent], Type[ActorCriticPolicy]
         ] = AgentFactory.instantiate(
-            config["architecture_name"], robot_model=robot_name
+            config["architecture_name"], #robot_model=robot_name TODOs
         )
         if isinstance(agent, BaseAgent):
             model = PPO(
