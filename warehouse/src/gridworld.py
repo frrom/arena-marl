@@ -155,7 +155,7 @@ class Map:
         tmp_arr = arr
         tmp_arr[tmp_arr==3]=0
         _,thresh = cv.threshold(tmp_arr,1, 255,0)
-        cntrs, _ = cv.findContours(thresh.astype(np.uint8), cv.RETR_TREE,cv.CHAIN_APPROX_SIMPLE)
+        _, cntrs, _ = cv.findContours(thresh.astype(np.uint8), cv.RETR_TREE,cv.CHAIN_APPROX_SIMPLE)
         lines_vert = []
         lines_hori = []
         
@@ -288,7 +288,7 @@ if __name__ == '__main__':
     #Launch the remaining nodes
     uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
     roslaunch.configure_logging(uuid)
-    launch = roslaunch.parent.ROSLaunchParent(uuid, ["/home/patrick/MARL_ws/src/arena-marl/warehouse/launch/rest.launch"])
+    launch = roslaunch.parent.ROSLaunchParent(uuid, [f"{rospkg.RosPack().get_path('warehouse')}/launch/rest.launch"])
     launch.start()
     rospy.loginfo("started")
 
