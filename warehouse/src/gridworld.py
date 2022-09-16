@@ -14,7 +14,7 @@ from std_msgs.msg import String
 import subprocess
 
 class Map:
-    def __init__(self, shelf_columns=3, shelf_rows=3, column_height=3, bigger_highways=False, scale=11,
+    def __init__(self, shelf_columns=3, shelf_rows=3, column_height=3, bigger_highways=False, scale=100,
                 setup_name= None, random_map=False):
         self.shelf_columns = shelf_columns
         self.shelf_rows = shelf_rows
@@ -75,7 +75,7 @@ class Map:
 
         map_world_yaml = {'properties': {'velocity_iterations': 10, 'position_iterations': 10},
                     'layers': [{'name': 'static', 'map': 'map.yaml', 'color': [0, 1, 0, 1]}]}
-        map_yaml = {'image': 'map.png', 'resolution': 10.0, 'origin': [0, 0, 0.0],
+        map_yaml = {'image': 'map.png', 'resolution': 0.01, 'origin': [0, 0, 0.0],
                     'negate': 0, 'occupied_thresh': 0.65, 'free_thresh': 0.196}    
 
         
@@ -181,11 +181,11 @@ class Map:
         #print(lines_vert)
         if include_vert_seperators:
             for line in lines_vert:
-                cv.line(img_with_seperators, line[0], line[1],0, 1)
+                cv.line(img_with_seperators, line[0], line[1],0, 5)
 
         if include_hor_seperators:
             for line in lines_hori:
-                cv.line(img_with_seperators, line[0], line[1],0, 1)
+                cv.line(img_with_seperators, line[0], line[1],0, 5)
         
         return img_with_seperators
 
@@ -268,27 +268,36 @@ class Map:
 import roslaunch
 from nav_msgs.msg import OccupancyGrid
 import time
+import sys
+
 if __name__ == '__main__':
     shelf_rows = rospy.get_param('/map_creator/shelf_rows')
     shelf_cols = rospy.get_param('/map_creator/shelf_cols')
     col_height = rospy.get_param('/map_creator/col_height')
-    bigger_highways = rospy.get_param('/map_creator/bigger_highways')
 
+    bigger_highways = rospy.get_param('/map_creator/bigger_highways')
+    scale = rospy.get_param('map_creator/scale')
     rand_map = rospy.get_param('/map_creator/random_map')
     print('random map',rand_map)
 
 
-    grid = Map(shelf_columns=shelf_cols, shelf_rows=shelf_rows, column_height=col_height, bigger_highways=bigger_highways, random_map = rand_map)
+    grid = Map(shelf_columns=shelf_cols, shelf_rows=shelf_rows, column_height=col_height, 
+               bigger_highways=bigger_highways, scale=scale, random_map = rand_map)
+
     time.sleep(2)
 
     if rand_map:
         msg = String()
         grid.new_episode_callback(msg)
 
-    #Launch the remaining nodes
+    #Launch the remaining node
+    launch_args = sys.argv[1:5]
     uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
     roslaunch.configure_logging(uuid)
-    launch = roslaunch.parent.ROSLaunchParent(uuid, [f"{rospkg.RosPack().get_path('warehouse')}/launch/rest.launch"])
+
+    cli_args = [f"{rospkg.RosPack().get_path('warehouse')}/launch/rest.launch"] + launch_args
+    roslaunch_file = [(roslaunch.rlutil.resolve_launch_arguments(cli_args)[0], launch_args)]
+    launch = roslaunch.parent.ROSLaunchParent(uuid,roslaunch_file )
     launch.start()
     rospy.loginfo("started")
 
