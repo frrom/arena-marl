@@ -30,7 +30,7 @@ class Visualizer:
         #TODO: replace this with a subscriber to /gridworld, taskmanager should update /gridworld
         #Add your path to ignc map
         self.map = None#Map(path=path)
-        self.scale = 11 #get path to image and extract size image_size[0]/map_size[0] = scale
+        self.scale = 100 #get path to image and extract size image_size[0]/map_size[0] = scale
         self.resolution = resolution
 
         self.markerArray = MarkerArray()
@@ -84,6 +84,7 @@ class Visualizer:
         '''adds markers for all shelf/goal cells'''
         grid = np.flip(self.map)
         #print(grid)
+        
         indices = np.stack(np.where(grid>0),1)
         for x,y in indices:
             grid_id = grid[x,y]
@@ -108,7 +109,7 @@ class Visualizer:
         rospy.init_node('visualizer', anonymous=True)
         rate = rospy.Rate(0.1)
         print('----initialized nodes---')
-
+        
         while not rospy.is_shutdown():
             #print(self.map)
             if self.map is not None:
@@ -126,6 +127,7 @@ class Visualizer:
                     id += 1
                 # Publish the MarkerArray
                 publisher.publish(self.markerArray)
+                
             
 
     def demo(self, grid, step=0):
