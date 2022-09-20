@@ -278,7 +278,7 @@ class StagedMARLRandomTask(RandomMARLTask):
     def _remove_obstacles(self):
         self.obstacles_manager.remove_obstacles()
 
-from arena_franknav.case_task_generator.scripts.task_gen1 import CaseTaskManager as ctm
+from case_task_generator.scripts.task_gen1 import CaseTaskManager as ctm
 import numpy as np
 from task_generator.msg import robot_goal, crate_action, robot_goal_list
 
