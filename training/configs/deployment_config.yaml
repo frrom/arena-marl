@@ -10,8 +10,8 @@ no_gpu: false
 
 ### Global configuration that applies to all robots
 # navigation task mode, chose from "random" , "staged" or "cases"
-task_mode: "cases"
-cases_grid_map_path: "/home/u20/MARL_ws/src/forks/arena-simulation-setup/maps/gridworld/grid.npy"
+task_mode: "random"
+cases_grid_map_path: "/home/u20/MARL_ws/src/forks/arena-simulation-setup/maps/warehouse_1_cases/grid.npy"
 # number of simulation timesteps
 n_timesteps: 40000000
 max_num_moves_per_eps: 1000

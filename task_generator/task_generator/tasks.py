@@ -1,3 +1,4 @@
+#%%
 from typing import Dict, Type, Union, List
 
 import json
@@ -111,6 +112,7 @@ class RandomMARLTask(ABSMARLTask):
                             start_pos, goal_pos = manager.set_start_pos_goal_pos(
                                 forbidden_zones=starts
                             )
+                            print(goal_pos)
                             starts[robot_idx] = (
                                 start_pos.x,
                                 start_pos.y,
@@ -329,7 +331,7 @@ class CasesMARLTask(ABSMARLTask):
             self.publisher_task_status()
 
     def publisher_task_status(self):
-            ids, robot_goals, crate_goals = self.ctm.get_open_tasks(generate= True)
+            ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= True)
             open_tasks = []
             for id, robot_goal, crate_goal in zip(ids, robot_goals, crate_goals):
                 task = robot_goal(
@@ -363,7 +365,7 @@ class CasesMARLTask(ABSMARLTask):
             return
 
         self.ctm.generate_scenareo(nr_tasks=self._num_robots, type= 'random')
-        _, _robot_goals, _crate_goals = self.ctm.get_open_tasks()
+        _, _robot_goals, _crate_goals = self.ctm.get_open_tasks(resolution= 1)
         robot_goals_iter, crate_goals_iter = iter(_robot_goals), iter(_crate_goals)
 
         with self._map_lock:
@@ -377,6 +379,7 @@ class CasesMARLTask(ABSMARLTask):
                         for manager in robot_managers:
                             manager: RobotManager = manager
                             goal, crate_goal = next(robot_goals_iter), next(crate_goals_iter)
+                            print(goal)
                             start = Pose2D()
                             start.x = 1
                             start.y = robot_idx * manager.ROBOT_RADIUS
@@ -541,3 +544,5 @@ def init_obstacle_manager(n_envs, mode: str = "train"):
         return ObstaclesManager("eval_sim", map_response.map)
     else:
         raise ValueError("mode must be either 'train' or 'eval'")
+
+
