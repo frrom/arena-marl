@@ -182,7 +182,7 @@ class CaseTaskManager():
                 crate_goals.append(self.numpy_to_pose2d(crate.goal/resolution))
         
         if generate:
-            nr_tasks = np.clip(self._num_active_tasks - len(crate_ids), 0)
+            nr_tasks = np.clip(self._num_active_tasks - len(crate_ids), 0, None)
             self.empty_delivered_goal()
             self.generate_scenareo(nr_tasks, reset= False)
             return self.get_open_tasks(generate=False) # explicitly pass false in case it just gets stuck in loop
