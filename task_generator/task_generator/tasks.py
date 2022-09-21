@@ -310,7 +310,8 @@ class CasesMARLTask(ABSMARLTask):
         self.goal_reached_subscriber = rospy.Subscriber(f'{self.ns}/goals', robot_goal, self.subscriber_goal_status)
         self.goal_pos_publisher = rospy.Publisher(f'{self.ns}/open_tasks', robot_goal_list)
         self.publisher_task_status()
-    
+        
+
     def subscriber_goal_status(self, msg: robot_goal):
         action = msg.crate_action.action
         robots = self.robot_manager[msg.robot_type]
@@ -332,20 +333,25 @@ class CasesMARLTask(ABSMARLTask):
             self.publisher_task_status()
 
     def publisher_task_status(self):
-            ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= True)
-            open_tasks = []
-            for id, robot_goal, crate_goal in zip(ids, robot_goals, crate_goals):
-                task = robot_goal(
-                    crate_action.ASSIGN,
-                    id, self.ns,
-                    '', '',
-                    robot_goal,
-                    crate_goal
-                    )
-                open_tasks.append(task)
-            open_tasks_list = robot_goal_list(open_tasks)
+        
+        ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= True)
+        open_tasks = []
+        
+        for id, robot_goal_, crate_goal in zip(ids, robot_goals, crate_goals):
+            crate_action_msg = crate_action()
+            crate_action_msg.action = crate_action.ASSIGN
 
-            self.goal_pos_publisher.publish(open_tasks_list)
+            task = robot_goal(
+                crate_action_msg,
+                id, self.ns,
+                '', '',
+                robot_goal_,
+                crate_goal
+                )
+            open_tasks.append(task)
+        
+        open_tasks_list = robot_goal_list(open_tasks)
+        self.goal_pos_publisher.publish(open_tasks_list)
         
 
     def add_robot_manager(self, robot_type: str, managers: List[RobotManager]):
