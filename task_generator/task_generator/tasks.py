@@ -309,6 +309,7 @@ class CasesMARLTask(ABSMARLTask):
         )
         self.goal_reached_subscriber = rospy.Subscriber(f'{self.ns}/goals', robot_goal, self.subscriber_goal_status)
         self.goal_pos_publisher = rospy.Publisher(f'{self.ns}/open_tasks', robot_goal_list)
+        self.publisher_task_status()
     
     def subscriber_goal_status(self, msg: robot_goal):
         action = msg.crate_action.action
