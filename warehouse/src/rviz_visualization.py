@@ -4,6 +4,7 @@ import roslib; roslib.load_manifest('visualization_marker_tutorials')
 from visualization_msgs.msg import Marker
 from visualization_msgs.msg import MarkerArray
 import rospy
+import rospkg
 import yaml
 from Grid import *
 from task_gen1 import TaskManager, Robot
@@ -16,6 +17,8 @@ from rospy_tutorials.msg import Floats
 from rospy.numpy_msg import numpy_msg
 
 from nav_msgs.msg import OccupancyGrid
+from std_msgs.msg import Bool
+from task_generator.msg import robot_goal, crate_action, robot_goal_list
 
 WALL_COLOR=(0,0,0)
 FREE_SHELF_COLOR=(0.7,0.7,1)
@@ -26,13 +29,25 @@ CRATE_COLOR=(0,1,0)
 path= '/home/patrick/catkin_ws/src/utils/arena-simulation-setup/maps/ignc/map.png'
 
 class Visualizer:
-    def __init__(self, resolution):
+    def __init__(self, ns=1, yaml=None):
         #TODO: replace this with a subscriber to /gridworld, taskmanager should update /gridworld
-        #Add your path to ignc map
-        self.map = None#Map(path=path)
-        self.scale = 100 #get path to image and extract size image_size[0]/map_size[0] = scale
-        self.resolution = resolution
+        
+        #switching between envs
+        self.ns=ns
+        self.ns_prefix = f"/{ns}/" if ns else ""
+        self._curr_stage = 1
 
+        #yaml resolution and origin information
+        self.resolution = yaml['resolution']
+        self.origin = yaml['origin']
+        path = rospack = rospkg.RosPack().get_path('arena-simulation-setup')+'/maps/gridworld/grid.npy'
+        self.map_original = np.load(path)#None#Map(path=path)
+        self.map = copy.deepcopy(self.map_original)
+
+        self.scale = 100 #get path to image and extract size image_size[0]/map_size[0] = scale
+        
+
+        self.new_map_received = False
         self.markerArray = MarkerArray()
         self.map_ID2COLOR={'1': CRATE_COLOR,
                            '2': WALL_COLOR,
@@ -41,7 +56,66 @@ class Visualizer:
                            '5': FREE_SHELF_COLOR,
                            '6': OCCUPIED_SHELF_COLOR}
 
+        # subs for triggers
+        self._sub_next = rospy.Subscriber(
+            f"{self.ns_prefix}next_stage", Bool, self.next_stage
+        )
+        self._sub_previous = rospy.Subscriber(
+            f"{self.ns_prefix}previous_stage", Bool, self.previous_stage
+        )
 
+        
+    def goal_list_to_map(self, data):
+        print('________goal list recieved_________')
+        self.new_map_received = True
+        tmp_map = copy.deepcopy(self.map_original)
+        for robot_goal_ in data.open_tasks:
+            idx = robot_goal_.robot_goal
+            print(idx)
+            shelf_or_goal = tmp_map[int(idx.y), int(idx.x)]
+            if shelf_or_goal == FREE_GOAL:
+                tmp_map[int(idx.y), int(idx.x)]=OCCUPIED_GOAL
+            elif shelf_or_goal == FREE_SHELF:
+                tmp_map[int(idx.y), int(idx.x)]=OCCUPIED_SHELF
+            else:
+                print('out:',self.map[int(idx.y), int(idx.x)])
+        self.map = tmp_map
+
+            
+
+    def next_stage(self, *args, **kwargs):
+        if self._curr_stage < len(self._stages):
+            self._curr_stage = self._curr_stage + 1
+            self._initiate_stage()
+
+            if self.ns == "eval_sim":
+                rospy.set_param("/curr_stage", self._curr_stage)
+                # if not rospy.get_param("debug_mode"):
+                #     with self._lock_json:
+                #         self._update_curr_stage_json()
+
+                if self._curr_stage == len(self._stages):
+                    rospy.set_param("/last_stage_reached", True)
+        else:
+            print(
+                f"({self.ns}) INFO: Tried to trigger next stage but already reached last one"
+            )
+
+    def previous_stage(self, *args, **kwargs):
+        if self._curr_stage > 1:
+            rospy.set_param("/last_stage_reached", False)
+
+            self._curr_stage = self._curr_stage - 1
+            self._initiate_stage()
+
+            if self.ns == "eval_sim":
+                rospy.set_param("/curr_stage", self._curr_stage)
+                with self._lock_json:
+                    self._update_curr_stage_json()
+        else:
+            print(
+                f"({self.ns}) INFO: Tried to trigger previous stage but already reached first one"
+            )
 
     def callback(self,data):
         w = data.info.width
@@ -68,8 +142,8 @@ class Visualizer:
         marker.color.g = g
         marker.color.b = b
         marker.pose.orientation.w = 1.0
-        marker.pose.position.x = x
-        marker.pose.position.y = y
+        marker.pose.position.x = x + self.origin[0]
+        marker.pose.position.y = y + self.origin[1]
         marker.pose.position.z = 0.1  
 
         return marker
@@ -100,20 +174,19 @@ class Visualizer:
         working_grid = copy.deepcopy(self.map)
         
         #Map Listener
-        Subscriber = rospy.Subscriber("gridworld", OccupancyGrid, self.callback)
+        #Subscriber = rospy.Subscriber("gridworld", OccupancyGrid, self.callback)
+        open_tasks = rospy.Subscriber('eval_sim/open_tasks', robot_goal_list, self.goal_list_to_map)
 
         #Marker Publisher
         topic = 'visualization_marker_array'
         publisher = rospy.Publisher(topic, MarkerArray, queue_size=1000)
 
         rospy.init_node('visualizer', anonymous=True)
-        rate = rospy.Rate(0.1)
+        rate = rospy.Rate(10)
         print('----initialized nodes---')
         
         while not rospy.is_shutdown():
-            #print(self.map)
-            if self.map is not None:
-                
+            if self.new_map_received == True:
                 # We add the new marker to the MarkerArray, removing the oldest
                 # marker from it when necessary
                 #self.delete_all_marker()
@@ -127,6 +200,7 @@ class Visualizer:
                     id += 1
                 # Publish the MarkerArray
                 publisher.publish(self.markerArray)
+                self.new_map_received = False
                 
             
 
@@ -179,6 +253,7 @@ class Visualizer:
 
 if __name__ == "__main__":
     mapyaml = rospy.get_param('/grid_vis/map_path')
+    ns = 'eval_sim'#rospy.get_param('/ns')
     print('----------------'+mapyaml+'-------------------------------')
     for i in range(0,5):
         print('--------------------------------')
@@ -188,5 +263,5 @@ if __name__ == "__main__":
         except yaml.YAMLError as exc:
             print(exc)
 
-    vis = Visualizer(yaml_dict['resolution'])
+    vis = Visualizer(ns,yaml_dict)
     vis.main()
