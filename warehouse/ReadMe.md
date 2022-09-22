@@ -9,6 +9,7 @@ or pass them from the command line.
 
 
 **Visualizer**
+
 The visualizer can also be run seperately with
 ```
 rosrun warehouse rviz_visualization.py
