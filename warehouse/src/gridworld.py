@@ -6,6 +6,7 @@ import rospkg
 import os
 import yaml
 import rospy
+import copy 
 
 #from map_generator_node.py
 from nav_msgs.msg import OccupancyGrid
@@ -16,6 +17,7 @@ import subprocess
 class Map:
     def __init__(self, shelf_columns=3, shelf_rows=3, column_height=3, bigger_highways=False, scale=100,
                 setup_name= None, random_map=False):
+
         self.shelf_columns = shelf_columns
         self.shelf_rows = shelf_rows
         self.column_height = column_height
@@ -24,11 +26,9 @@ class Map:
         self.setup_name = setup_name
         self.random_map = random_map
 
-        self.grid = None #self.make_rware(self.shelf_columns, self.shelf_rows, self.column_height)
-
-        self.grid_size = None #self.grid.shape
-
-        self.map = None #self.generate_map(self.upscale_grid(self.grid,self.scale), self.column_height)
+        self.grid = None 
+        self.grid_size = None 
+        self.map = None 
         self.occupancy_grid = OccupancyGrid()
 
         rospack = rospkg.RosPack()
@@ -48,12 +48,12 @@ class Map:
             self.make_setup_folder()
             self.gridpub.publish(self.create_gridworld_message())
         
-        
 
     def make_gridworld(self):
         self.grid = self.make_rware(self.shelf_columns, self.shelf_rows, self.column_height)
         if bigger_highways:
             self.increase_highways()
+        self.grid = self.add_walls(self.grid)
         self.map = self.generate_map(self.upscale_grid(self.grid,self.scale), self.column_height)
         self.grid_size = self.grid.shape
 
@@ -73,20 +73,22 @@ class Map:
 
             os.mkdir(setup_pth)
 
+        y_origin = - 4
+        x_origin = - self.grid.shape[1]/2
         map_world_yaml = {'properties': {'velocity_iterations': 10, 'position_iterations': 10},
                     'layers': [{'name': 'static', 'map': 'map.yaml', 'color': [0, 1, 0, 1]}]}
-        map_yaml = {'image': 'map.png', 'resolution': 0.01, 'origin': [0, 0, 0.0],
+        map_yaml = {'image': 'map.png', 'resolution': 0.01, 'origin': [x_origin, y_origin, 0.0],
                     'negate': 0, 'occupied_thresh': 0.65, 'free_thresh': 0.196}    
 
         
         with open(setup_pth+'/map.world.yaml', 'w') as file:
-            documents1= yaml.dump(map_world_yaml, file)
+            documents1= yaml.dump(map_world_yaml, file, default_flow_style=None)
 
         with open(setup_pth+'/map.yaml', 'w') as file:
             documents2 = yaml.dump(map_yaml, file)
 
        
-        cv.imwrite(os.path.join(self.path2setup, self.setup_name, 'map.png'),self.map)    
+        cv.imwrite(os.path.join(self.path2setup, self.setup_name, 'map.png'), self.map)    
         np.save(setup_pth+'/grid', self.grid)
         
         
@@ -151,9 +153,11 @@ class Map:
             creates the map.png from grid array
             draw seperators between the individual shelf cells
         '''
-
-        tmp_arr = arr
-        tmp_arr[tmp_arr==3]=0
+        
+        tmp_arr = copy.deepcopy(arr)
+        tmp_arr[tmp_arr==FREE_GOAL]=0
+        tmp_arr[tmp_arr==WALL]=0
+        
         _,thresh = cv.threshold(tmp_arr,1, 255,0)
         _, cntrs, _ = cv.findContours(thresh.astype(np.uint8), cv.RETR_TREE,cv.CHAIN_APPROX_SIMPLE)
         lines_vert = []
@@ -186,6 +190,7 @@ class Map:
         if include_hor_seperators:
             for line in lines_hori:
                 cv.line(img_with_seperators, line[0], line[1],0, 5)
+        img_with_seperators[arr == WALL] = 0
         
         return img_with_seperators
 
@@ -263,6 +268,9 @@ class Map:
             except rospy.ROSException as e:
                 print(e)
 
+    def add_walls(self,grid):
+        grid = np.pad(grid, pad_width=((1,1), (1,1)), mode='constant', constant_values=WALL) 
+        return grid
 
 
 import roslaunch
