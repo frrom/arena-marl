@@ -1,4 +1,5 @@
 #%%
+from time import sleep
 from typing import Dict, Type, Union, List
 
 import json
@@ -309,6 +310,9 @@ class CasesMARLTask(ABSMARLTask):
         )
         self.goal_reached_subscriber = rospy.Subscriber(f'{self.ns}/goals', robot_goal, self.subscriber_goal_status)
         self.goal_pos_publisher = rospy.Publisher(f'{self.ns}/open_tasks', robot_goal_list)
+
+        print('Waiting for publisher to start, there are already ',self.goal_pos_publisher.get_num_connections(), 'connections')
+        sleep(1)
         self.publisher_task_status()
         
 
@@ -419,6 +423,7 @@ class CasesMARLTask(ABSMARLTask):
                 raise Exception("reset error!")
 
         self.reset_flag = dict.fromkeys(self.reset_flag, False)
+        self.publisher_task_status()
 
 
 @unique
@@ -536,6 +541,7 @@ def get_task_manager(
         task = StagedMARLRandomTask(ns, None, None, start_stage, curriculum_path)
     if task_mode == ARENA_TASKS.SCENARIO:
         raise NotImplementedError
+    
     return task
 
 
