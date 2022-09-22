@@ -40,7 +40,7 @@ class Visualizer:
         #yaml resolution and origin information
         self.resolution = yaml['resolution']
         self.origin = yaml['origin']
-        path = rospack = rospkg.RosPack().get_path('arena-simulation-setup')+'/maps/gridworld/grid.npy'
+        path = rospkg.RosPack().get_path('arena-simulation-setup')+'/maps/gridworld/grid.npy'
         self.map_original = np.load(path)#None#Map(path=path)
         self.map = copy.deepcopy(self.map_original)
 
