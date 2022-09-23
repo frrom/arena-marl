@@ -269,7 +269,7 @@ def create_deployment_setup(config: dict) -> dict:
         ns="eval_sim",
         mode=config["task_mode"],
         curriculum_path=config["evaluation_curriculum"]["evaluation_curriculum_file"],
-        cases_grid_map=config["cases_grid_map_path"]
+        cases_grid_map=config["cases_map_path"]
     )
 
     ### create and set obstacle manager

@@ -252,7 +252,8 @@ class Visualizer:
 
 
 if __name__ == "__main__":
-    mapyaml = rospy.get_param('/grid_vis/map_path')
+    #mapyaml = rospy.get_param('/grid_vis/map_path')
+    mapyaml = '/'.join([rospkg.RosPack().get_path('arena-simulation-setup'), 'maps', 'gridworld', 'map.yaml'])
     ns = 'eval_sim'#rospy.get_param('/ns')
     print('----------------'+mapyaml+'-------------------------------')
     for i in range(0,5):

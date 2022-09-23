@@ -292,11 +292,17 @@ class CasesMARLTask(ABSMARLTask):
         self,
         obstacles_manager: ObstaclesManager,
         robot_manager: Dict[str, List[RobotManager]],
-        map_grid_path: str,
+        map_path: str,
         ns: str,
     ):
         self.ns = ns
-        self.ctm = ctm(map_grid_path)
+        self.ctm = ctm(f'{map_path}/grid.npy')
+        with open(f"{map_path}/map.yaml", "r") as stream:
+            try:
+                self.configs = yaml.safe_load(stream)
+            except yaml.YAMLError as exc:
+                print(exc)
+
         self._freq = 1/float(rospy.get_param('step_size'))
 
         super().__init__(obstacles_manager, robot_manager)
@@ -308,8 +314,8 @@ class CasesMARLTask(ABSMARLTask):
             if type(self.robot_manager) is dict
             else {}
         )
-        self.goal_reached_subscriber = rospy.Subscriber(f'{self.ns}/goals', robot_goal, self.subscriber_goal_status)
-        self.goal_pos_publisher = rospy.Publisher(f'{self.ns}/open_tasks', robot_goal_list)
+        self.goal_reached_subscriber = rospy.Subscriber(f'{self.ns}goals', robot_goal, self.subscriber_goal_status)
+        self.goal_pos_publisher = rospy.Publisher(f'{self.ns}open_tasks', robot_goal_list)
 
         print('Waiting for publisher to start, there are already ',self.goal_pos_publisher.get_num_connections(), 'connections')
         sleep(1)
@@ -329,7 +335,7 @@ class CasesMARLTask(ABSMARLTask):
         if action == crate_action.PICKUP:
             crate = self.ctm.pickup_crate(msg.goal, robot) # crate at msg.goal is picked up by robot
             new_goal = crate.get_goal()
-            robot.publish_goal(new_goal.x, new_goal.y, new_goal.theta)
+            robot.publish_goal(new_goal.x + self.configs['origin'][0], new_goal.y + self.configs['origin'][1], new_goal.theta)
             self.publisher_task_status()
 
         elif action == crate_action.DROPOFF:
@@ -368,6 +374,7 @@ class CasesMARLTask(ABSMARLTask):
 
 
     def reset(self, robot_type: str):
+        print(f'{robot_type=}')
         assert robot_type in self.robot_manager, f"Unknown robot type: {robot_type},"
         f" robot has to be one of the following types: {self.robot_manager.keys()}"
 
@@ -390,7 +397,6 @@ class CasesMARLTask(ABSMARLTask):
                         for manager in robot_managers:
                             manager: RobotManager = manager
                             goal, crate_goal = next(robot_goals_iter), next(crate_goals_iter)
-                            print(goal)
                             start = Pose2D()
                             start.x = 1
                             start.y = robot_idx * manager.ROBOT_RADIUS
