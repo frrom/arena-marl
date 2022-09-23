@@ -32,6 +32,7 @@ from gym import spaces
 import numpy as np
 
 from std_msgs.msg import Bool
+from task_generator.msg import robot_goal, crate_action, robot_goal_list
 
 
 class ObservationCollector:
@@ -48,6 +49,7 @@ class ObservationCollector:
             num_lidar_beams (int): [description]
             lidar_range (float): [description]
         """
+        self.obs_goals = 5
         self.ns = ns
         if ns is None or ns == "":
             self.ns_prefix = ""
@@ -79,13 +81,14 @@ class ObservationCollector:
                         shape=(num_lidar_beams,),
                         dtype=np.float32,
                     ),
-                    spaces.Box(low=0, high=15, shape=(1,), dtype=np.float32),  # rho
+                    spaces.Box(low=0, high=15, shape=(self.obs_goals,), dtype=np.float32),  # rho
                     spaces.Box(
                         low=-np.pi,
                         high=np.pi,
-                        shape=(1,),
+                        shape=(self.obs_goals,),
                         dtype=np.float32,  # theta
                     ),
+                    spaces.Box(low=0, high=15, shape=(self.obs_goals,), dtype=np.float32), #target distance
                     spaces.Box(
                         low=-2.0,
                         high=2.0,
@@ -98,9 +101,21 @@ class ObservationCollector:
                         shape=(1,),
                         dtype=np.float32,  # angular vel
                     ),
+                    spaces.Box(low=0, high=15, shape=(1,), dtype=np.float32),  # rho_goal
+                    spaces.Box(
+                        low=-np.pi,
+                        high=np.pi,
+                        shape=(1,),
+                        dtype=np.float32,  # theta_goal
+                    ),
+                    spaces.Box(
+                        low=0,
+                        high=1,
+                        shape=(1,),
+                        dtype=np.uint8,  # package_boolean
+                    ),
                 )
             )
-
         self._laser_num_beams = num_lidar_beams
         # for frequency controlling
         self._action_frequency = 1 / rospy.get_param("/robot_action_rate")
@@ -111,6 +126,8 @@ class ObservationCollector:
         self._robot_vel = Twist()
         self._subgoal = Pose2D()
         self._globalplan = np.array([])
+        self._subgoals = np.array([])
+        self._crate_list = np.array([])
 
         # train mode?
         self._is_train_mode = rospy.get_param("/train_mode")
@@ -167,6 +184,9 @@ class ObservationCollector:
         self._subgoal_sub = rospy.Subscriber(
             goal_topic, PoseStamped, self.callback_subgoal
         )
+        self._subgoals_sub = self._subgoal_sub = rospy.Subscriber(
+            f'{self.ns}/open_tasks', robot_goal_list, self.callback_subgoals
+        )
         self._globalplan_sub = rospy.Subscriber(
             f"{self.ns_prefix}globalPlan", Path, self.callback_global_plan
         )
@@ -207,9 +227,22 @@ class ObservationCollector:
         else:
             scan = np.zeros(self._laser_num_beams, dtype=float)
 
-        rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
-            self._subgoal, self._robot_pose
-        )
+        goal_dists = np.zeros((self.obs_goals))
+        pub_goals = np.zeros((self.obs_goals,2))
+        pub_crates = np.zeros((self.obs_goals,2))
+        for i, goal in enumerate(self._subgoals):
+            rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
+                goal, self._robot_pose
+            )
+            if goal_dists[-1] == 0:
+                pub_goals[i,:] = [rho, theta]
+                rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
+                self._crate_list[i], self._robot_pose)
+                pub_crates[i,:] = [rho, theta]
+                goal_dists[i], _  = ObservationCollector._get_goal_pose_in_robot_frame(
+                self._crate_list[i], goal)
+            else:
+                break
 
         merged_obs = (
             np.hstack([scan, np.array([rho, theta])])
@@ -217,15 +250,21 @@ class ObservationCollector:
             else np.hstack(
                 [
                     scan,
-                    np.array([rho, theta]),
+                    pub_goals[:,0],
+                    pub_goals[:,1],
+                    goal_dists,
                     kwargs.get("last_action", np.array([0, 0, 0])),
+                    np.array([0,0]),
+                    np.array([0])
                 ]
             )
         )
 
         obs_dict = {
             "laser_scan": scan,
-            "goal_in_robot_frame": [rho, theta],
+            "goals_in_robot_frame": pub_goals,
+            "crates_in_robot_frame": pub_crates,
+            "goal_in_robot_frame": [0, 0],
             "global_plan": self._globalplan,
             "robot_pose": self._robot_pose,
             "last_action": kwargs.get("last_action", np.array([0, 0, 0])),
@@ -308,6 +347,15 @@ class ObservationCollector:
 
     def callback_subgoal(self, msg_Subgoal):
         self._subgoal = self.process_subgoal_msg(msg_Subgoal)
+        return
+    def callback_subgoals(self, msg: robot_goal_list):
+        goal_list = []
+        crate_list = []
+        for r_goal in msg:
+            goal_list.append(self.pose3D_to_pose2D(r_goal.robot_goal.pose))
+            crate_list.append(self.pose3D_to_pose2D(r_goal.crate_goal.pose))
+        self._subgoals = goal_list
+        self._crate_list = crate_list
         return
 
     def callback_global_plan(self, msg_global_plan):

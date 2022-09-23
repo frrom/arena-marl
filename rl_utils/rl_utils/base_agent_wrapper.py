@@ -1,14 +1,16 @@
-import json
-import os
 from abc import ABC, abstractmethod
 from typing import Tuple
 
+import json
 import numpy as np
-import rospkg
+import os
 import rospy
+import rospkg
 import yaml
-from geometry_msgs.msg import Twist
+
 from gym import spaces
+
+from geometry_msgs.msg import Twist
 
 from .utils.observation_collector import ObservationCollector
 from .utils.reward import RewardCalculator
@@ -24,7 +26,7 @@ DEFAULT_HYPERPARAMETER = os.path.join(
     "default.json",
 )
 DEFAULT_NUM_LASER_BEAMS, DEFAULT_LASER_RANGE = 360, 3.5
-GOAL_RADIUS = 0.75
+GOAL_RADIUS = 0.33
 
 
 class BaseDRLAgent(ABC):
@@ -55,6 +57,7 @@ class BaseDRLAgent(ABC):
         self._robot_sim_ns = robot_ns
 
         self.robot_model = robot_model
+        self.package_bool = False
 
         robot_setting_path = os.path.join(
             ROOT_ROBOT_PATH, f"{self.robot_model}", f"{self.robot_model}.model.yaml"
@@ -123,7 +126,10 @@ class BaseDRLAgent(ABC):
         # todo: What are the imports for?
         # import rosnav.model.custom_policy
         import rosnav.model.custom_sb3_policy
-
+    def get_package_boolean(self):
+        return self.package_bool
+    def set_package_boolean(self, pack):
+        self.package_bool = pack
     def read_setting_files(
         self, robot_setting_yaml: str, action_space_yaml: str
     ) -> None:
@@ -251,7 +257,7 @@ class BaseDRLAgent(ABC):
             holonomic=self._holonomic,
             robot_radius=self._robot_radius,
             safe_dist=1.6 * self._robot_radius,
-            goal_radius=self._agent_params["goal_radius"],
+            goal_radius=GOAL_RADIUS,
             rule=self._agent_params["reward_fnc"],
             extended_eval=False,
         )
@@ -283,8 +289,10 @@ class BaseDRLAgent(ABC):
                 into one array. Second entry represents the observation dictionary.
         """
         merged_obs, obs_dict = self.observation_collector.get_observations()
-        if self._agent_params["normalize"]:
-            merged_obs = self.normalize_observations(merged_obs)
+        # pack_trafo = 1 if self.package_bool else 0
+        # merged_obs[-1] = pack_trafo
+        # if self._agent_params["normalize"]:
+        #     merged_obs = self.normalize_observations(merged_obs)
         return merged_obs, obs_dict
 
     def normalize_observations(self, merged_obs: np.ndarray) -> np.ndarray:
@@ -339,6 +347,7 @@ class BaseDRLAgent(ABC):
         Returns:
             float: Reward amount
         """
+        
         return self.reward_calculator.get_reward(action=action, **obs_dict)
 
     def publish_action(self, action: np.ndarray) -> None:

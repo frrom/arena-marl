@@ -82,7 +82,7 @@ def vec_env_create(
             env_fn,
             ns=f"sim_{i}",
             agent_list=agent_list[f"sim_{i}"],
-            task_manager_reset=task_managers[f"sim_{i}"].reset,
+            task_manager_reset=task_managers[f"sim_{i}"],
             max_num_moves_per_eps=max_num_moves_per_eps,
         )
         for i in range(1, num_vec_envs + 1)

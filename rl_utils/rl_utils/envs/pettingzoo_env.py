@@ -17,6 +17,7 @@ from task_generator.tasks import get_MARL_task
 # from marl_agent.utils.supersuit_utils import *
 # from rl_agent.utils.supersuit_utils import MarkovVectorEnv_patched
 import supersuit as ss
+from task_generator.msg import robot_goal, crate_action, robot_goal_list
 
 
 def env_fn(**kwargs: Dict[str, Any]):  # -> VecEnv:
@@ -88,7 +89,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
         self._validate_agent_list()
 
         # task manager
-        self.task_manager_reset = task_manager_reset
+        self.task_manager_reset = task_manager_reset.reset
 
         # service clients
         if self._is_train_mode:
@@ -106,6 +107,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
         rospy.set_param(
             f"{self._ns}training/{self.robot_model}/reset_mode", "reset_states"
         )  # "reset_states" or "get_obs"
+        self.goal_publisher = rospy.Publisher(f'{self._ns}/goals', robot_goal)
 
     def observation_space(self, agent: str) -> spaces.Box:
         """Returns specific agents' observation space.
@@ -235,7 +237,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
         ### NEW IDEA
 
         mode = rospy.get_param(f"{self._ns}training/{self.robot_model}/step_mode")
-
+        print(mode)
         assert mode in [
             "apply_actions",
             "get_states",
@@ -358,12 +360,30 @@ class FlatlandPettingZooEnv(ParallelEnv):
         for agent in self.curr_actions:
             # observations
             merged, _dict = self.agent_object_mapping[agent].get_observations()
-            merged_obs[agent] = merged
+            
 
             # rewards and infos
             reward, reward_info = self.agent_object_mapping[agent].get_reward(
                 action=self.curr_actions[agent], obs_dict=_dict
             )
+            if reward_info["is_success"] == 1:
+                #set the package boolean True and save goal point, if robot reaches goal and doesnt have a package
+                #set package boolean False and release goal, if robot reaches goal and has a package
+                if self.agent_object_mapping[agent].get_package_boolean():
+                    self.agent_object_mapping[agent].set_package_boolean(False)
+                    self.agent_publisher(self, crate_action.DROPOFF, idx= int(reward_info["crate"]))
+                    
+                else:
+                    self.agent_object_mapping[agent].set_package_boolean(True)
+                    merged[-3:-1] = _dict["crates_in_robot_frame"][int(reward_info["crate"]),:]
+                    self.agent_publisher(self, crate_action.PICKUP, idx = int(reward_info["crate"]),
+                    r_id=self.agent_object_mapping[agent]._ns_robot, r_type=self.agent_object_mapping[agent].robot_model)
+            
+            pack_trafo = 1 if self.agent_object_mapping[agent].get_package_boolean() else 0
+            merged[-1] = pack_trafo
+            if self.agent_object_mapping[agent]._agent_params["normalize"]:
+                merged = self.agent_object_mapping[agent].normalize_observations(merged)
+            merged_obs[agent] = merged
             rewards[agent], reward_infos[agent] = reward, reward_info
 
         # dones & infos
@@ -386,7 +406,15 @@ class FlatlandPettingZooEnv(ParallelEnv):
         self.action_provided, self.curr_actions = False, {}
 
         return merged_obs, rewards, dones, infos
-
+    def agent_publisher(self, action, goal = None, crate = None, idx=0, r_id = '', r_type = 'burger'):
+        task = robot_goal(
+                    action,
+                    idx, self._ns,
+                    r_id, r_type,
+                    goal,
+                    crate
+                    )
+        self.goal_publisher.publish(task)
     @property
     def max_num_agents(self):
         return len(self.agents)

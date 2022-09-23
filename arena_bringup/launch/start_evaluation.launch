@@ -1,5 +1,5 @@
 <launch>
-  <!-- For eval we ony use one environment -->
+  <!-- For eval we only use one environment -->
   <arg name="ns_prefix" default="/eval_sim" />
 
   <!-- Match the number of robots you deploy. E.g. 2 jackals and 2 burgers = 4 robots -->

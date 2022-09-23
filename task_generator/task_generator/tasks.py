@@ -280,8 +280,8 @@ class StagedMARLRandomTask(RandomMARLTask):
         self.obstacles_manager.remove_obstacles()
 
 from case_task_generator.scripts.task_gen1 import CaseTaskManager as ctm
-import numpy as np
 from task_generator.msg import robot_goal, crate_action, robot_goal_list
+import numpy as np
 
 class CasesMARLTask(ABSMARLTask):
 
@@ -314,14 +314,10 @@ class CasesMARLTask(ABSMARLTask):
             if type(self.robot_manager) is dict
             else {}
         )
-        self.goal_reached_subscriber = rospy.Subscriber(f'{self.ns}goals', robot_goal, self.subscriber_goal_status)
-        self.goal_pos_publisher = rospy.Publisher(f'{self.ns}open_tasks', robot_goal_list)
-
-        print('Waiting for publisher to start, there are already ',self.goal_pos_publisher.get_num_connections(), 'connections')
-        sleep(1)
-        self.publisher_task_status()
-        
-
+        self.open_tasks = []
+        self.goal_reached_subscriber = rospy.Subscriber(f'{self.ns}/goals', robot_goal, self.subscriber_goal_status)
+        self.goal_pos_publisher = rospy.Publisher(f'{self.ns}/open_tasks', robot_goal_list)
+    
     def subscriber_goal_status(self, msg: robot_goal):
         action = msg.crate_action.action
         robots = self.robot_manager[msg.robot_type]
@@ -333,7 +329,7 @@ class CasesMARLTask(ABSMARLTask):
             raise ValueError(f'Robot: type: {msg.robot_type} id: "{msg.robot_id}" is not recognized.')
 
         if action == crate_action.PICKUP:
-            crate = self.ctm.pickup_crate(msg.goal, robot) # crate at msg.goal is picked up by robot
+            crate = self.ctm.pickup_crate(self.open_tasks[msg.crate_id].robot_goal, robot) # crate at msg.goal is picked up by robot
             new_goal = crate.get_goal()
             robot.publish_goal(new_goal.x + self.configs['origin'][0], new_goal.y + self.configs['origin'][1], new_goal.theta)
             self.publisher_task_status()
@@ -343,25 +339,20 @@ class CasesMARLTask(ABSMARLTask):
             self.publisher_task_status()
 
     def publisher_task_status(self):
-        
-        ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= True)
-        open_tasks = []
-        
-        for id, robot_goal_, crate_goal in zip(ids, robot_goals, crate_goals):
-            crate_action_msg = crate_action()
-            crate_action_msg.action = crate_action.ASSIGN
+            ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= True)
+            self.open_tasks = []
+            for id, robot_goal, crate_goal in zip(ids, robot_goals, crate_goals):
+                task = robot_goal(
+                    crate_action.ASSIGN,
+                    id, self.ns,
+                    '', '',
+                    robot_goal,
+                    crate_goal
+                    )
+                self.open_tasks.append(task)
+            open_tasks_list = robot_goal_list(self.open_tasks)
 
-            task = robot_goal(
-                crate_action_msg,
-                id, self.ns,
-                '', '',
-                robot_goal_,
-                crate_goal
-                )
-            open_tasks.append(task)
-        
-        open_tasks_list = robot_goal_list(open_tasks)
-        self.goal_pos_publisher.publish(open_tasks_list)
+            self.goal_pos_publisher.publish(open_tasks_list)
         
 
     def add_robot_manager(self, robot_type: str, managers: List[RobotManager]):

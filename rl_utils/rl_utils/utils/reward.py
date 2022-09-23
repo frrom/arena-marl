@@ -47,6 +47,7 @@ class RewardCalculator:
             "rule_04": RewardCalculator._cal_reward_rule_04,
             "rule_05": RewardCalculator._cal_reward_rule_05,
             "rule_06": RewardCalculator._cal_reward_rule_06,
+            "rule_07": RewardCalculator._cal_reward_rule_07,
             "barn": RewardCalculator._cal_reward_rule_barn,
         }
         self.cal_func = self._cal_funcs[rule]
@@ -241,7 +242,47 @@ class RewardCalculator:
             goal_in_robot_frame, reward_factor=0.5, penalty_factor=0.6
         )
         self.last_action = self._curr_action
+    def _cal_reward_rule_07(
+        self,
+        laser_scan: np.ndarray,
+        goals_in_robot_frame: np.ndarray,
+        goal_in_robot_frame: Tuple[float, float],
+        package: bool,
+        *args,
+        **kwargs
+    ):
+        self._curr_action = kwargs["action"]
+        # self._set_current_dist_to_globalplan(
+        #     kwargs["global_plan"], kwargs["robot_pose"]
+        # )
+        if laser_scan.min() > self.safe_dist:
+            self._reward_distance_global_plan(
+                reward_factor=0.2,
+                penalty_factor=0.3,
+            )
+            self._reward_abrupt_vel_change(vel_idx=0, factor=0.2)
+            self._reward_abrupt_vel_change(vel_idx=-1, factor=0.05)
+            if self.holonomic:
+                self._reward_abrupt_vel_change(vel_idx=1, factor=0.05)
+            self._reward_reverse_drive(self._curr_action, 0.0001)
+        else:
+            self.last_dist_to_path = None
+        if package:
+            self._reward_goal_approached(goal_in_robot_frame, reward_factor=0.4, penalty_factor=0.6)
+            self._reward_goal_reached(goal_in_robot_frame, reward=17.5)
+        else:
+            self._reward_distance_to_goals(goals_in_robot_frame)
+            for i, goal in enumerate(goals_in_robot_frame):
+                self._reward_goal_reached(goal, reward=13)
+                if self.info["is_done"]:
+                    self.info["crate"] = i
+                    self.info["is_done"] = False
+                    break
 
+        self._reward_safe_dist(laser_scan, punishment=0.25)
+        self._reward_collision(laser_scan, punishment=10)
+        
+        self.last_action = self._curr_action
     def _cal_reward_rule_barn(
         self,
         laser_scan: np.ndarray,
@@ -298,7 +339,13 @@ class RewardCalculator:
             self.info["is_success"] = 1
         else:
             self.info["is_done"] = False
-
+    def _reward_distance_to_goals(self,
+        goals_in_robot_frame=np.ndarray,
+        reward_factor: float = 1.0,
+        distance_factor: float = 0.4,):
+        
+        for dist in goals_in_robot_frame[:,0]:
+            self.curr_reward += reward_factor*np.exp(-dist*distance_factor)
     def _reward_goal_approached(
         self,
         goal_in_robot_frame=Tuple[float, float],
