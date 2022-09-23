@@ -258,7 +258,8 @@ class BaseDRLAgent(ABC):
             robot_radius=self._robot_radius,
             safe_dist=1.6 * self._robot_radius,
             goal_radius=GOAL_RADIUS,
-            rule=self._agent_params["reward_fnc"],
+            rule = "rule_07"
+            #rule=self._agent_params["reward_fnc"],
             extended_eval=False,
         )
 

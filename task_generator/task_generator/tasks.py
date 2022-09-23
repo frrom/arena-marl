@@ -392,7 +392,7 @@ class CasesMARLTask(ABSMARLTask):
                             start.x = 1
                             start.y = robot_idx * manager.ROBOT_RADIUS
                             start.theta= 0
-                            manager.set_start_pos_goal_pos(start, goal)
+                            manager.set_start_pos_random()
                             starts[robot_idx] = (
                                 start.x,
                                 start.y,
@@ -412,6 +412,7 @@ class CasesMARLTask(ABSMARLTask):
                     self.obstacles_manager.reset_pos_obstacles_random(
                         forbidden_zones=starts + goals + crate_goals 
                     )
+                    print(starts + goals + crate_goals)
                     break
                 except rospy.ServiceException as e:
                     rospy.logwarn(repr(e))
