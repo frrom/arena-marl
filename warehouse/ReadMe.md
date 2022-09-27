@@ -14,13 +14,13 @@ The visualizer can also be run seperately with
 python gridworld.py shelf_cols:=3 shelf_rows:=3 col_height:=3 scale:=100 bigger_highways:=True rand_map:=False additional_goals:=None
 ```
 
--shels_cols: Number of shelf columns (int)
--shelf_rows: Number of shelf rows (int)
--col_height: Columns inside each shelf (int)
--scale: Scale for upsizing the map (just keep it 100) (int)
--bigger_highways: Increase the width of the highways by 1 (bool)
--rand_map: randomize map parameters (bool)
--additional_goals: Add more goals on the top (use N) or on the left, right (L,R)
+- shels_cols: Number of shelf columns (int)
+- shelf_rows: Number of shelf rows (int)
+- col_height: Columns inside each shelf (int)
+- scale: Scale for upsizing the map (just keep it 100) (int)
+- bigger_highways: Increase the width of the highways by 1 (bool)
+- rand_map: randomize map parameters (bool)
+- additional_goals: Add more goals on the top (use N) or on the left, right (L,R)
 
 
 **Visualizer**
