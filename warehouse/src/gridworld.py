@@ -15,14 +15,28 @@ from std_msgs.msg import String
 import subprocess
 
 class Map:
-    def __init__(self, shelf_columns=3, shelf_rows=3, column_height=3, bigger_highways=False, scale=100,
-                setup_name= None, random_map=False):
+    def __init__(
+                self, shelf_columns=3,
+                shelf_rows=3,
+                column_height=3,
+                bigger_highways=False,
+                scale=100,
+                setup_name= None,
+                random_map=False,
+                additional_goals = None
+                ):
 
+        #Grid Shape Arguments
         self.shelf_columns = shelf_columns
         self.shelf_rows = shelf_rows
         self.column_height = column_height
-
         self.scale = scale
+        
+        #Addtional Map Changes
+        self.bigger_highways = bigger_highways
+        self.additional_goals = additional_goals
+
+        #Meta Stuff
         self.setup_name = setup_name
         self.random_map = random_map
 
@@ -31,6 +45,7 @@ class Map:
         self.map = None 
         self.occupancy_grid = OccupancyGrid()
 
+        #Subscriber & Publishers
         rospack = rospkg.RosPack()
         self.path2setup = os.path.join(rospack.get_path('arena-simulation-setup'),'maps')
         
@@ -51,8 +66,13 @@ class Map:
 
     def make_gridworld(self):
         self.grid = self.make_rware(self.shelf_columns, self.shelf_rows, self.column_height)
-        if bigger_highways:
+
+        if self.bigger_highways:
             self.increase_highways()
+        
+        if self.additional_goals is not None:
+            self.add_goals_NWO(self.additional_goals )
+
         self.grid = self.add_walls(self.grid)
         self.map = self.generate_map(self.upscale_grid(self.grid,self.scale), self.column_height)
         self.grid_size = self.grid.shape
@@ -272,6 +292,28 @@ class Map:
         grid = np.pad(grid, pad_width=((1,1), (1,1)), mode='constant', constant_values=WALL) 
         return grid
 
+    def add_goals_NWO(self, grid, distance_goal_shelf = 3, orientation='T'):
+        h,w = self.grid.shape
+        w_half = int(w/2)
+        h_half = int(h/2)
+        if orientation == 'T':
+            goal_row = np.zeros((distance_goal_shelf,w))
+            goal_row[0,w_half-1:w_half+1] = FREE_GOAL
+            self.grid = np.vstack([goal_row, self.grid])
+
+        elif orientation == 'L':
+            goal_col = np.zeros((h,distance_goal_shelf))
+            goal_col[w_half-1:w_half+1, 0] = FREE_GOAL
+            self.grid = np.hstack([goal_row, self.grid])
+
+        elif orientation == 'R':
+            goal_col = np.zeros((h,distance_goal_shelf))
+            goal_col[w_half-1:w_half+1, 2] = FREE_GOAL
+            self.grid = np.hstack([self.grid, goal_row])
+
+
+            
+
 
 import roslaunch
 from nav_msgs.msg import OccupancyGrid
@@ -279,40 +321,44 @@ import time
 import sys
 
 if __name__ == '__main__':
-    shelf_rows = rospy.get_param('/map_creator/shelf_rows')
-    shelf_cols = rospy.get_param('/map_creator/shelf_cols')
-    col_height = rospy.get_param('/map_creator/col_height')
-
-    bigger_highways = rospy.get_param('/map_creator/bigger_highways')
-    scale = rospy.get_param('map_creator/scale')
-    rand_map = rospy.get_param('/map_creator/random_map')
-    print('random map',rand_map)
+    grid_args = sys.argv[1:8]
+    shelf_cols, shelf_rows, col_height, scale  = [int(a.split(':=')[-1]) for a in grid_args[0:4]]
+    bigger_highways, rand_map = [bool(a.split(':=')[-1]) for a in grid_args[4:6]]
+    additional_goals = grid_args[6]
 
 
-    grid = Map(shelf_columns=shelf_cols, shelf_rows=shelf_rows, column_height=col_height, 
-               bigger_highways=bigger_highways, scale=scale, random_map = rand_map)
+
+    grid = Map( shelf_columns=shelf_cols,
+                shelf_rows=shelf_rows,
+                column_height=col_height, 
+                bigger_highways=bigger_highways,
+                scale=scale,
+                random_map = rand_map,
+                additional_goals = additional_goals
+                )
 
     time.sleep(2)
 
-    if rand_map:
-        msg = String()
-        grid.new_episode_callback(msg)
+    if sys.argv[-1].split(':=')[0]=='__log':
+        if rand_map:
+            msg = String()
+            grid.new_episode_callback(msg)
 
-    #Launch the remaining node
-    launch_args = sys.argv[1:5]
-    uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
-    roslaunch.configure_logging(uuid)
+        #Launch the remaining node
+        launch_args = sys.argv[8:-2]
+        uuid = roslaunch.rlutil.get_or_generate_uuid(None, False)
+        roslaunch.configure_logging(uuid)
 
-    cli_args = [f"{rospkg.RosPack().get_path('warehouse')}/launch/rest.launch"] + launch_args
-    roslaunch_file = [(roslaunch.rlutil.resolve_launch_arguments(cli_args)[0], launch_args)]
-    launch = roslaunch.parent.ROSLaunchParent(uuid,roslaunch_file )
-    launch.start()
-    rospy.loginfo("started")
+        cli_args = [f"{rospkg.RosPack().get_path('warehouse')}/launch/rest.launch"] + launch_args
+        roslaunch_file = [(roslaunch.rlutil.resolve_launch_arguments(cli_args)[0], launch_args)]
+        launch = roslaunch.parent.ROSLaunchParent(uuid,roslaunch_file )
+        launch.start()
+        rospy.loginfo("started")
 
 
-    while not rospy.is_shutdown():
-        grid.gridpub.publish(grid.create_gridworld_message())
-    rospy.spin()
+        while not rospy.is_shutdown():
+            grid.gridpub.publish(grid.create_gridworld_message())
+        rospy.spin()
             
 
 
