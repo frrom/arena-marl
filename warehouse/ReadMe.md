@@ -1,4 +1,4 @@
-**Usage** 
+**Launchfile** 
 
 ```
 roslaunch warehouse map_launch.launch
