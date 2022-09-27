@@ -8,6 +8,7 @@ roslaunch warehouse map_launch.launch
 2. or pass them from the command line.
 
 **Map Creator**
+
 The visualizer can also be run seperately with
 
 ```
