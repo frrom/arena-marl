@@ -341,12 +341,15 @@ class CasesMARLTask(ABSMARLTask):
     def publisher_task_status(self):
             ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= True)
             self.open_tasks = []
-            for id, robot_goal, crate_goal in zip(ids, robot_goals, crate_goals):
+            for id, robot_goal_pose, crate_goal in zip(ids, robot_goals, crate_goals):
+                crate_action_msg = crate_action()
+                crate_action_msg.action = crate_action.ASSIGN
+                
                 task = robot_goal(
-                    crate_action.ASSIGN,
+                    crate_action_msg,
                     id, self.ns,
                     '', '',
-                    robot_goal,
+                    robot_goal_pose,
                     crate_goal
                     )
                 self.open_tasks.append(task)
