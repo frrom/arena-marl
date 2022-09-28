@@ -3,14 +3,14 @@ debug_mode: false
 
 # Hardware specifc configurations
 # number of parallel environments
-n_envs: 12
+n_envs: 1
 # gpu yes or no
 no_gpu: no
 
 
 ### Global configuration that applies to all robots
 # navigation task mode, chose from "random" or "staged"
-task_mode: "staged"
+task_mode: "cases"
 # number of simulation timesteps
 n_timesteps: 40000000
 max_num_moves_per_eps: 650
@@ -58,7 +58,7 @@ eval_log: false
 # use tensorboard
 tb: false
 # use wandb
-wandb: true
+wandb: false
 
 global_tasks: true
 

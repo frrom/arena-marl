@@ -942,5 +942,5 @@ def choose_agent_model(
         rospy.set_param("model", robot_name)
         model = PPO.load(os.path.join(config["resume"], "best_model.zip"), env)
         update_hyperparam_model(model, PATHS, params, n_envs)
-    model.set_wandb_logger(wandb_logger)
+    #model.set_wandb_logger(wandb_logger)
     return model

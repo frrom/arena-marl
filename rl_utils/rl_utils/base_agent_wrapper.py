@@ -58,6 +58,7 @@ class BaseDRLAgent(ABC):
 
         self.robot_model = robot_model
         self.package_bool = False
+        self.agent_goal = np.array([0,0])
 
         robot_setting_path = os.path.join(
             ROOT_ROBOT_PATH, f"{self.robot_model}", f"{self.robot_model}.model.yaml"
@@ -130,6 +131,10 @@ class BaseDRLAgent(ABC):
         return self.package_bool
     def set_package_boolean(self, pack):
         self.package_bool = pack
+    def get_agent_goal(self):
+        return self.agent_goal
+    def set_agent_goal(self, goal):
+        self.agent_goal = goal
     def read_setting_files(
         self, robot_setting_yaml: str, action_space_yaml: str
     ) -> None:

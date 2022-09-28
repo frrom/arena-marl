@@ -75,7 +75,7 @@ class RandomMARLTask(ABSMARLTask):
         robot_manager: Dict[str, List[RobotManager]],
     ):
         super().__init__(obstacles_manager, robot_manager)
-
+        print("using random tasks")
         self._num_robots = (
             count_robots(self.robot_manager) if type(self.robot_manager) is dict else 0
         )
@@ -155,7 +155,7 @@ class StagedMARLRandomTask(RandomMARLTask):
         super().__init__(obstacles_manager, robot_manager)
         self.ns = ns
         self.ns_prefix = f"/{ns}/" if ns else ""
-
+        print("using staged MARL-task")
         self._curr_stage = start_stage
         self._stages = {}
         # self._PATHS = PATHS
@@ -292,17 +292,20 @@ class CasesMARLTask(ABSMARLTask):
         self,
         obstacles_manager: ObstaclesManager,
         robot_manager: Dict[str, List[RobotManager]],
-        map_path: str,
         ns: str,
+        map_path: str = None,
     ):
         self.ns = ns
-        self.ctm = ctm(f'{map_path}/grid.npy')
+        map_path = rospy.get_param("/world_path") if map_path == None else map_path
+        map_path = '/'.join(map_path.split('/')[:-1])
+        print(map_path)
+        self.ctm = ctm(f'{map_path}/grid.npy', num_active_tasks=int(rospy.get_param("/observable_task_goals")))
         with open(f"{map_path}/map.yaml", "r") as stream:
             try:
                 self.configs = yaml.safe_load(stream)
             except yaml.YAMLError as exc:
                 print(exc)
-
+        print("using warehouse tasks")
         self._freq = 1/float(rospy.get_param('step_size'))
 
         super().__init__(obstacles_manager, robot_manager)
@@ -315,8 +318,8 @@ class CasesMARLTask(ABSMARLTask):
             else {}
         )
         self.open_tasks = []
-        self.goal_reached_subscriber = rospy.Subscriber(f'{self.ns}/goals', robot_goal, self.subscriber_goal_status)
-        self.goal_pos_publisher = rospy.Publisher(f'{self.ns}/open_tasks', robot_goal_list)
+        self.goal_reached_subscriber = rospy.Subscriber(f"{self.ns}/goals", robot_goal, self.subscriber_goal_status)
+        self.goal_pos_publisher = rospy.Publisher(f"{self.ns}/open_tasks", robot_goal_list)
     
     def subscriber_goal_status(self, msg: robot_goal):
         action = msg.crate_action.action
@@ -341,15 +344,12 @@ class CasesMARLTask(ABSMARLTask):
     def publisher_task_status(self):
             ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= True)
             self.open_tasks = []
-            for id, robot_goal_pose, crate_goal in zip(ids, robot_goals, crate_goals):
-                crate_action_msg = crate_action()
-                crate_action_msg.action = crate_action.ASSIGN
-                
+            for id, r_goal, crate_goal in zip(ids, robot_goals, crate_goals):
                 task = robot_goal(
-                    crate_action_msg,
+                    crate_action(crate_action.ASSIGN),
                     id, self.ns,
                     '', '',
-                    robot_goal_pose,
+                    r_goal,
                     crate_goal
                     )
                 self.open_tasks.append(task)
@@ -446,6 +446,7 @@ def get_MARL_task(
     robot_ids: List[str],
     PATHS: dict,
     start_stage: int = 1,
+    cases_grid_map: np.ndarray = None
 ) -> ABSMARLTask:
     """Function to return desired navigation task manager.
 
@@ -498,6 +499,9 @@ def get_MARL_task(
         )
     if task_mode == ARENA_TASKS.SCENARIO:
         raise NotImplementedError
+    if task_mode == ARENA_TASKS.CASES:
+        rospy.set_param("/task_mode", "cases")
+        task = CasesMARLTask(None, None, cases_grid_map, ns)
     return task
 
 
@@ -526,11 +530,10 @@ def get_task_manager(
         ABSMARLTask: A task manager instance.
     """
     task_mode = get_mode(mode)
-
     task = None
     if task_mode == ARENA_TASKS.CASES:
         rospy.set_param("/task_mode", "cases")
-        task = CasesMARLTask(None, None, cases_grid_map, ns)
+        task = CasesMARLTask(None, None, ns)
     if task_mode == ARENA_TASKS.MANUAL:
         raise NotImplementedError
     if task_mode == ARENA_TASKS.RANDOM:

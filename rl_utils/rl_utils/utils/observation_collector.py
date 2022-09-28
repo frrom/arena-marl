@@ -49,12 +49,13 @@ class ObservationCollector:
             num_lidar_beams (int): [description]
             lidar_range (float): [description]
         """
-        self.obs_goals = 5
+        self.obs_goals = int(rospy.get_param("/observable_task_goals"))
         self.ns = ns
         if ns is None or ns == "":
             self.ns_prefix = ""
         else:
             self.ns_prefix = "/" + ns + "/"
+        self._sim = ns.split('/')[0]
 
         self._action_in_obs = rospy.get_param("actions_in_obs", default=False)
 
@@ -184,8 +185,8 @@ class ObservationCollector:
         self._subgoal_sub = rospy.Subscriber(
             goal_topic, PoseStamped, self.callback_subgoal
         )
-        self._subgoals_sub = self._subgoal_sub = rospy.Subscriber(
-            f'{self.ns}/open_tasks', robot_goal_list, self.callback_subgoals
+        self._subgoals_sub = rospy.Subscriber(
+            f"{self._sim}/open_tasks", robot_goal_list, self.callback_subgoals
         )
         self._globalplan_sub = rospy.Subscriber(
             f"{self.ns_prefix}globalPlan", Path, self.callback_global_plan
@@ -230,6 +231,7 @@ class ObservationCollector:
         goal_dists = np.zeros((self.obs_goals))
         pub_goals = np.zeros((self.obs_goals,2))
         pub_crates = np.zeros((self.obs_goals,2))
+        test = self._subgoals
         for i, goal in enumerate(self._subgoals):
             rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
                 goal, self._robot_pose
@@ -262,9 +264,9 @@ class ObservationCollector:
 
         obs_dict = {
             "laser_scan": scan,
+            "goal_in_robot_frame": [0, 0],
             "goals_in_robot_frame": pub_goals,
             "crates_in_robot_frame": pub_crates,
-            "goal_in_robot_frame": [0, 0],
             "global_plan": self._globalplan,
             "robot_pose": self._robot_pose,
             "last_action": kwargs.get("last_action", np.array([0, 0, 0])),
@@ -351,6 +353,7 @@ class ObservationCollector:
     def callback_subgoals(self, msg: robot_goal_list):
         goal_list = []
         crate_list = []
+        print(msg)
         for r_goal in msg:
             goal_list.append(self.pose3D_to_pose2D(r_goal.robot_goal.pose))
             crate_list.append(self.pose3D_to_pose2D(r_goal.crate_goal.pose))

@@ -36,6 +36,7 @@ class RewardCalculator:
         self._curr_dist_to_path = None
         self.safe_dist = safe_dist
         self._extended_eval = extended_eval
+        self.crate = 0
 
         self.kdtree = None
 
@@ -68,11 +69,15 @@ class RewardCalculator:
         """
         self.curr_reward = 0
         self.info = {}
+        self.info["is_success"] = 0
+        self.info["crate"] = self.crate
 
     def get_reward(
         self,
         laser_scan: np.ndarray,
         goal_in_robot_frame: Tuple[float, float],
+        goals_in_robot_frame: np.ndarray = np.array([]),
+        package: bool = False,
         *args,
         **kwargs
     ):
@@ -83,7 +88,10 @@ class RewardCalculator:
         :param goal_in_robot_frame (Tuple[float,float]): position (rho, theta) of the goal in robot frame (Polar coordinate)
         """
         self._reset()
-        self.cal_func(self, laser_scan, goal_in_robot_frame, *args, **kwargs)
+        if len(goals_in_robot_frame) == 0:
+            self.cal_func(self, laser_scan, goal_in_robot_frame, *args, **kwargs)
+        else:
+            self.cal_func(self, laser_scan, goal_in_robot_frame, goals_in_robot_frame, package, *args, **kwargs)
         return self.curr_reward, self.info
 
     def _cal_reward_rule_00(
@@ -245,8 +253,8 @@ class RewardCalculator:
     def _cal_reward_rule_07(
         self,
         laser_scan: np.ndarray,
-        goals_in_robot_frame: np.ndarray,
         goal_in_robot_frame: Tuple[float, float],
+        goals_in_robot_frame: np.ndarray,
         package: bool,
         *args,
         **kwargs
@@ -274,11 +282,11 @@ class RewardCalculator:
             self._reward_distance_to_goals(goals_in_robot_frame)
             for i, goal in enumerate(goals_in_robot_frame):
                 self._reward_goal_reached(goal, reward=13)
-                if self.info["is_done"]:
-                    self.info["crate"] = i
+                if self.info["is_done"] and self.info["is_success"]==1:
+                    self.crate = i
                     self.info["is_done"] = False
                     break
-
+        self.info["crate"] = self.crate
         self._reward_safe_dist(laser_scan, punishment=0.25)
         self._reward_collision(laser_scan, punishment=10)
         

@@ -89,7 +89,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
         self._validate_agent_list()
 
         # task manager
-        self.task_manager_reset = task_manager_reset.reset
+        self.task_manager_reset = task_manager_reset
 
         # service clients
         if self._is_train_mode:
@@ -107,7 +107,8 @@ class FlatlandPettingZooEnv(ParallelEnv):
         rospy.set_param(
             f"{self._ns}training/{self.robot_model}/reset_mode", "reset_states"
         )  # "reset_states" or "get_obs"
-        self.goal_publisher = rospy.Publisher(f'{self._ns}/goals', robot_goal)
+        print(f'{self._ns}goals')
+        self.goal_publisher = rospy.Publisher(f'{self._ns}goals', robot_goal)
 
     def observation_space(self, agent: str) -> spaces.Box:
         """Returns specific agents' observation space.
@@ -237,7 +238,6 @@ class FlatlandPettingZooEnv(ParallelEnv):
         ### NEW IDEA
 
         mode = rospy.get_param(f"{self._ns}training/{self.robot_model}/step_mode")
-        print(mode)
         assert mode in [
             "apply_actions",
             "get_states",
@@ -361,11 +361,16 @@ class FlatlandPettingZooEnv(ParallelEnv):
             # observations
             merged, _dict = self.agent_object_mapping[agent].get_observations()
             
-
+            _dict["package"] = self.agent_object_mapping[agent].get_package_boolean()
             # rewards and infos
+            _dict["goal_in_robot_frame"] = self.agent_object_mapping[agent].get_agent_goal()
             reward, reward_info = self.agent_object_mapping[agent].get_reward(
                 action=self.curr_actions[agent], obs_dict=_dict
             )
+            if agent == "robot1":
+                print(_dict["goals_in_robot_frame"])
+                print(_dict["crates_in_robot_frame"])
+                print(_dict["goal_in_robot_frame"])
             if reward_info["is_success"] == 1:
                 #set the package boolean True and save goal point, if robot reaches goal and doesnt have a package
                 #set package boolean False and release goal, if robot reaches goal and has a package
@@ -376,6 +381,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
                 else:
                     self.agent_object_mapping[agent].set_package_boolean(True)
                     merged[-3:-1] = _dict["crates_in_robot_frame"][int(reward_info["crate"]),:]
+                    self.agent_object_mapping[agent].set_agent_goal(merged[-3:-1])
                     self.agent_publisher(self, crate_action.PICKUP, idx = int(reward_info["crate"]),
                     r_id=self.agent_object_mapping[agent]._ns_robot, r_type=self.agent_object_mapping[agent].robot_model)
             
@@ -384,6 +390,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
             if self.agent_object_mapping[agent]._agent_params["normalize"]:
                 merged = self.agent_object_mapping[agent].normalize_observations(merged)
             merged_obs[agent] = merged
+            print(agent, reward, pack_trafo)
             rewards[agent], reward_infos[agent] = reward, reward_info
 
         # dones & infos

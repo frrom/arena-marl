@@ -26,6 +26,7 @@ def main(args):
         wandb_logger = None
 
     # set debug_mode
+    rospy.set_param("observable_task_goals", 5)
     rospy.set_param("debug_mode", config["debug_mode"])
 
     ### create dict for all robot types
