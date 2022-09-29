@@ -353,10 +353,12 @@ class ObservationCollector:
     def callback_subgoals(self, msg: robot_goal_list):
         goal_list = []
         crate_list = []
-        print(msg)
-        for r_goal in msg:
-            goal_list.append(self.pose3D_to_pose2D(r_goal.robot_goal.pose))
-            crate_list.append(self.pose3D_to_pose2D(r_goal.crate_goal.pose))
+        #print(msg)
+        for r_goal in msg.open_tasks:
+            goal_list.append(r_goal.robot_goal)
+            crate_list.append(r_goal.crate_goal)
+            # goal_list.append(self.pose3D_to_pose2D(r_goal.robot_goal))
+            # crate_list.append(self.pose3D_to_pose2D(r_goal.crate_goal))
         self._subgoals = goal_list
         self._crate_list = crate_list
         return

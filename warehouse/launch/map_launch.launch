@@ -58,44 +58,11 @@
   <arg name="add_goals" default="None"/>
   <!-- Gridworld Nodes, start Map_server from map_creator -->
   <node name="map_creator" pkg="warehouse" type="gridworld.py" output="screen" clear_params="true" 
-<<<<<<< Updated upstream
                 args="shelf_cols:=$(arg shelf_cols) shelf_rows:=$(arg shelf_rows) col_height:=$(arg col_height) scale:=100
                 bigger_highways:=$(arg bigger_highways) random_map:=$(arg random_map) add_goals:=$(arg add_goals)
                 ns_prefix:=$(arg ns_prefix) num_robots:=$(arg num_robots) map_folder_name:=$(arg map_folder_name) map_path:=$(arg map_path)"> 
 
               <remap from="/gridworld_base" to="/$(arg ns_prefix)/gridworld_base" />
         </node>
-=======
-                args="ns_prefix:=$(arg ns_prefix) num_robots:=$(arg num_robots) map_folder_name:=$(arg map_folder_name) map_path:=$(arg map_path)">
-    <param name="shelf_cols" value="$(arg shelf_cols)" /> 
-    <param name="shelf_rows" value="$(arg shelf_rows)" /> 
-    <param name="col_height" value="$(arg col_height)" /> 
-    <param name="bigger_highways" value="$(arg bigger_highways)" /> 
-    <param name="random_map" value="$(arg random_map)" /> 
-    <param name="scale" value="100" /> 
-    <remap from="/gridworld_base" to="/$(arg ns_prefix)/gridworld_base" />
-  </node>
-
-  <group if="$(eval arg('train_mode') == false)">
-  <!-- makes sure that action's will be published according to sim time in eval mode-->
-    <node name="action_publisher" pkg="arena_local_planner_drl" type="action_publisher.py"/>
-  </group>
-  
-  <!-- set the log format -->
-  <env name="ROSCONSOLE_FORMAT" value="[${severity} ${time} ${logger}]: ${message}" />
-
-  <!-- Start one env for the evaluation phase -->
-  <include file="$(find arena_bringup)/launch/sublaunch_training/marl_single_env_training.launch">
-    <arg name="ns" value="eval_sim" />
-    <arg name="num_robots" value="$(arg num_robots)" />
-  </include>
-
-  <!-- Start n envs for the training phase -->
-  <include file="$(find arena_bringup)/launch/sublaunch_training/start_envs.launch">
-    <arg name="num_envs" value="$(arg num_envs)" />
-    <arg name="ns_prefix" value="$(arg ns_prefix)" />
-    <arg name="num_robots" value="$(arg num_robots)" />
-  </include>
->>>>>>> Stashed changes
 
 </launch>

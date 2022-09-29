@@ -367,22 +367,22 @@ class FlatlandPettingZooEnv(ParallelEnv):
             reward, reward_info = self.agent_object_mapping[agent].get_reward(
                 action=self.curr_actions[agent], obs_dict=_dict
             )
-            if agent == "robot1":
-                print(_dict["goals_in_robot_frame"])
-                print(_dict["crates_in_robot_frame"])
-                print(_dict["goal_in_robot_frame"])
+            # if agent == "robot1":
+            #     print(_dict["goals_in_robot_frame"])
+            #     print(_dict["crates_in_robot_frame"])
+            #     print(_dict["goal_in_robot_frame"])
             if reward_info["is_success"] == 1:
                 #set the package boolean True and save goal point, if robot reaches goal and doesnt have a package
                 #set package boolean False and release goal, if robot reaches goal and has a package
                 if self.agent_object_mapping[agent].get_package_boolean():
                     self.agent_object_mapping[agent].set_package_boolean(False)
-                    self.agent_publisher(self, crate_action.DROPOFF, idx= int(reward_info["crate"]))
+                    self.agent_publisher(self, crate_action(crate_action.DROPOFF,"pub"), idx= int(reward_info["crate"]))
                     
                 else:
                     self.agent_object_mapping[agent].set_package_boolean(True)
                     merged[-3:-1] = _dict["crates_in_robot_frame"][int(reward_info["crate"]),:]
                     self.agent_object_mapping[agent].set_agent_goal(merged[-3:-1])
-                    self.agent_publisher(self, crate_action.PICKUP, idx = int(reward_info["crate"]),
+                    self.agent_publisher(self, crate_action(crate_action.PICKUP,"pub"), idx = int(reward_info["crate"]),
                     r_id=self.agent_object_mapping[agent]._ns_robot, r_type=self.agent_object_mapping[agent].robot_model)
             
             pack_trafo = 1 if self.agent_object_mapping[agent].get_package_boolean() else 0

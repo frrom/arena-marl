@@ -346,7 +346,7 @@ class CasesMARLTask(ABSMARLTask):
             self.open_tasks = []
             for id, r_goal, crate_goal in zip(ids, robot_goals, crate_goals):
                 task = robot_goal(
-                    crate_action(crate_action.ASSIGN),
+                    crate_action(crate_action.ASSIGN,"pub"),
                     id, self.ns,
                     '', '',
                     r_goal,
