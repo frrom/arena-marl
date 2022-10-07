@@ -342,7 +342,7 @@ class CasesMARLTask(ABSMARLTask):
             self.publisher_task_status()
 
     def publisher_task_status(self):
-            ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= True)
+            ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= True) # TODO check resolution parameter
             self.open_tasks = []
             for id, r_goal, crate_goal in zip(ids, robot_goals, crate_goals):
                 task = robot_goal(
@@ -377,7 +377,7 @@ class CasesMARLTask(ABSMARLTask):
             return
 
         self.ctm.generate_scenareo(nr_tasks=self._num_robots, type= 'random')
-        _, _robot_goals, _crate_goals = self.ctm.get_open_tasks(resolution= 1)
+        _, _robot_goals, _crate_goals = self.ctm.get_open_tasks(resolution= 1) # TODO check resolution parameter
         robot_goals_iter, crate_goals_iter = iter(_robot_goals), iter(_crate_goals)
 
         with self._map_lock:
@@ -392,10 +392,13 @@ class CasesMARLTask(ABSMARLTask):
                             manager: RobotManager = manager
                             goal, crate_goal = next(robot_goals_iter), next(crate_goals_iter)
                             start = Pose2D()
-                            start.x = 1
-                            start.y = robot_idx * manager.ROBOT_RADIUS
-                            start.theta= 0
-                            manager.set_start_pos_random()
+                            (start.x, start.y, start.theta,) = get_random_pos_on_map(
+                                self._free_space_indices,
+                                self.map,
+                                self.ROBOT_RADIUS * 2,
+                                forbidden_zones=forbidden_zones,
+                            )
+                            manager.move_robot(start)
                             starts[robot_idx] = (
                                 start.x,
                                 start.y,
