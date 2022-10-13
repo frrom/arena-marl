@@ -21,7 +21,7 @@ from geometry_msgs.msg import Pose2D
 
 from .obstacles_manager import ObstaclesManager
 from .robot_manager import RobotManager
-
+from .utils import get_random_pos_on_map
 
 class ABSMARLTask(ABC):
     """An abstract class for the DRL agent navigation tasks."""
@@ -391,19 +391,6 @@ class CasesMARLTask(ABSMARLTask):
                         for manager in robot_managers:
                             manager: RobotManager = manager
                             goal, crate_goal = next(robot_goals_iter), next(crate_goals_iter)
-                            start = Pose2D()
-                            (start.x, start.y, start.theta,) = get_random_pos_on_map(
-                                self._free_space_indices,
-                                self.map,
-                                self.ROBOT_RADIUS * 2,
-                                forbidden_zones=forbidden_zones,
-                            )
-                            manager.move_robot(start)
-                            starts[robot_idx] = (
-                                start.x,
-                                start.y,
-                                manager.ROBOT_RADIUS * 2.25,
-                            )
                             goals[robot_idx] = (
                                 goal.x,
                                 goal.y,
@@ -412,6 +399,19 @@ class CasesMARLTask(ABSMARLTask):
                             crate_goals[robot_idx] = (
                                 crate_goal.x,
                                 crate_goal.y,
+                                manager.ROBOT_RADIUS * 2.25,
+                            )
+                            start = Pose2D()
+                            (start.x, start.y, start.theta,) = get_random_pos_on_map(
+                                self._free_space_indices,
+                                self.map,
+                                self.ROBOT_RADIUS * 2,
+                                forbidden_zones=goals + crate_goals,
+                            )
+                            manager.move_robot(start)
+                            starts[robot_idx] = (
+                                start.x,
+                                start.y,
                                 manager.ROBOT_RADIUS * 2.25,
                             )
                             robot_idx += 1
