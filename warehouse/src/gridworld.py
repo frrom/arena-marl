@@ -95,8 +95,8 @@ class Map:
 
             os.mkdir(setup_pth)
 
-        y_origin = - 4
-        x_origin = - self.grid.shape[1]/2
+        y_origin = 0
+        x_origin = 0
         map_world_yaml = {'properties': {'velocity_iterations': 10, 'position_iterations': 10},
                     'layers': [{'name': 'static', 'map': 'map.yaml', 'color': [0, 1, 0, 1]}]}
         map_yaml = {'image': 'map.png', 'resolution': 0.01, 'origin': [self.x_origin, self.y_origin, 0.0],
