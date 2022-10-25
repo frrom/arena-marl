@@ -15,6 +15,7 @@ from Crate import CrateStack
 import rospy
 from rospy_tutorials.msg import Floats
 from rospy.numpy_msg import numpy_msg
+import sys
 
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Bool
@@ -175,13 +176,13 @@ class Visualizer:
         
         #Map Listener
         #Subscriber = rospy.Subscriber("gridworld", OccupancyGrid, self.callback)
-        open_tasks = rospy.Subscriber('eval_sim/open_tasks', robot_goal_list, self.goal_list_to_map)
+        open_tasks = rospy.Subscriber('sim_1/open_tasks', robot_goal_list, self.goal_list_to_map)
 
         #Marker Publisher
         topic = 'visualization_marker_array'
         publisher = rospy.Publisher(topic, MarkerArray, queue_size=1000)
 
-        rospy.init_node('visualizer', anonymous=True)
+        rospy.init_node(f"{self.ns}/visualizer", anonymous=True)
         rate = rospy.Rate(10)
         print('----initialized nodes---')
         
@@ -253,8 +254,15 @@ class Visualizer:
 
 if __name__ == "__main__":
     #mapyaml = rospy.get_param('/grid_vis/map_path')
+    args = rospy.myargv(args=sys.argv)
+    if len(args) != 2:
+        print("no arguments found")
+        ns = 'sim_1'
+    else:
+        ns = args[1]
+    print(ns)
     mapyaml = '/'.join([rospkg.RosPack().get_path('arena-simulation-setup'), 'maps', 'gridworld', 'map.yaml'])
-    ns = 'eval_sim'#rospy.get_param('/ns')
+    #rospy.get_param('/ns')
     print('----------------'+mapyaml+'-------------------------------')
     for i in range(0,5):
         print('--------------------------------')

@@ -170,6 +170,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
             # reset the reward calculator
             for agent in self.agents:
                 self.agent_object_mapping[agent].reward_calculator.reset()
+                self.agent_object_mapping[agent].set_package_boolean(False)
 
             # reset the task manager
             self.task_manager_reset(self.robot_model)
@@ -375,6 +376,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
                 #set the package boolean True and save goal point, if robot reaches goal and doesnt have a package
                 #set package boolean False and release goal, if robot reaches goal and has a package
                 if self.agent_object_mapping[agent].get_package_boolean():
+                    print(agent)
                     self.agent_object_mapping[agent].set_package_boolean(False)
                     self.agent_publisher(self, crate_action(crate_action.DROPOFF,"pub"), idx= int(reward_info["crate"]))
                     
@@ -390,7 +392,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
             if self.agent_object_mapping[agent]._agent_params["normalize"]:
                 merged = self.agent_object_mapping[agent].normalize_observations(merged)
             merged_obs[agent] = merged
-            print(agent, reward, pack_trafo)
+            #print(agent, reward, pack_trafo)
             rewards[agent], reward_infos[agent] = reward, reward_info
 
         # dones & infos

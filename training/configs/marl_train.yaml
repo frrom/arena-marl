@@ -3,7 +3,7 @@ debug_mode: false
 
 # Hardware specifc configurations
 # number of parallel environments
-n_envs: 1
+n_envs: 12
 # gpu yes or no
 no_gpu: no
 
@@ -56,7 +56,7 @@ log_interval: 1
 # save evaluation stats during training in log file
 eval_log: false
 # use tensorboard
-tb: false
+tb: true
 # use wandb
 wandb: false
 
@@ -71,7 +71,7 @@ robots:
     # name of architecture defined in the Policy factory
     architecture_name: "AGENT_24"
     # path to latest checkpoint; if provided the training will be resumed from that checkpoint
-    resume: null
+    resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2022_10_01__11_28/jackal_2022_10_01__11_28"
   # rto:
   #   # number of robots of this type
   #   num_robots: 3

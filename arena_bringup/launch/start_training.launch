@@ -71,6 +71,7 @@
   <include file="$(find arena_bringup)/launch/sublaunch_training/marl_single_env_training.launch">
     <arg name="ns" value="eval_sim" />
     <arg name="num_robots" value="$(arg num_robots)" />
+    <arg name="warehouse" value="$(arg warehouse)" />
   </include>
 
   <!-- Start n envs for the training phase -->
@@ -78,5 +79,6 @@
     <arg name="num_envs" value="$(arg num_envs)" />
     <arg name="ns_prefix" value="$(arg ns_prefix)" />
     <arg name="num_robots" value="$(arg num_robots)" />
+    <arg name="warehouse" value="$(arg warehouse)" />
   </include> 
 </launch>

@@ -1,6 +1,7 @@
 <launch>
     <arg name="ns" />
     <arg name="num_robots" default="1" />
+    <arg name="warehouse" default="false" />
 
     <!-- Don't change it if you don't know what does it mean! -->
     <arg name="global_frame_id"   value="map"/>
@@ -55,6 +56,7 @@
     <!-- use simulator and rviz-->
     <include file="$(find arena_bringup)/launch/sublaunch_training/flatland_simulator.launch">
         <arg name="ns" value="$(arg ns)"/>
+        <arg name="warehouse" value="$(arg warehouse)" />
     </include>
 
   </launch>

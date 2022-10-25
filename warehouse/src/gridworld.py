@@ -327,7 +327,7 @@ if __name__ == '__main__':
     shelf_cols, shelf_rows, col_height, scale  = [int(a.split(':=')[-1]) for a in grid_args[0:4]]
     bigger_highways, rand_map = [bool(a.split(':=')[-1]) for a in grid_args[4:6]]
     additional_goals = grid_args[6]
-
+    rand_map = False
 
 
     grid = Map( shelf_columns=shelf_cols,

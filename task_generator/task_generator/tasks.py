@@ -403,10 +403,10 @@ class CasesMARLTask(ABSMARLTask):
                             )
                             start = Pose2D()
                             (start.x, start.y, start.theta,) = get_random_pos_on_map(
-                                self._free_space_indices,
-                                self.map,
-                                self.ROBOT_RADIUS * 2,
-                                forbidden_zones=goals + crate_goals,
+                                manager._free_space_indices,
+                                manager.map,
+                                manager.ROBOT_RADIUS * 2,
+                                forbidden_zones= goals + crate_goals,
                             )
                             manager.move_robot(start)
                             starts[robot_idx] = (
