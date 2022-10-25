@@ -3,7 +3,7 @@ debug_mode: false
 
 # Hardware specifc configurations
 # number of parallel environments
-n_envs: 12
+n_envs: 10
 # gpu yes or no
 no_gpu: no
 
@@ -70,8 +70,10 @@ robots:
     hyperparameter_file: "jackal.json" # "default.json"
     # name of architecture defined in the Policy factory
     architecture_name: "AGENT_24"
+
     # path to latest checkpoint; if provided the training will be resumed from that checkpoint
-    resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2022_10_01__11_28/jackal_2022_10_01__11_28"
+    resume: null
+    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2022_10_24__16_50/jackal_2022_10_24__16_50"
   # rto:
   #   # number of robots of this type
   #   num_robots: 3

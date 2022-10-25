@@ -14,6 +14,7 @@ from geometry_msgs.msg import Twist
 
 from .utils.observation_collector import ObservationCollector
 from .utils.reward import RewardCalculator
+from geometry_msgs.msg import Pose2D, PoseStamped, PoseWithCovarianceStamped
 
 # robot_model = rospy.get_param("model")
 ROOT_ROBOT_PATH = os.path.join(
@@ -58,7 +59,9 @@ class BaseDRLAgent(ABC):
 
         self.robot_model = robot_model
         self.package_bool = False
-        self.agent_goal = np.array([0,0])
+        self.reserved_goal = False
+        self.agent_goal = [Pose2D()]
+        self.extend = self._is_train_mode = rospy.get_param("choose_goal")
 
         robot_setting_path = os.path.join(
             ROOT_ROBOT_PATH, f"{self.robot_model}", f"{self.robot_model}.model.yaml"
@@ -75,7 +78,7 @@ class BaseDRLAgent(ABC):
         self.load_hyperparameters(path=hyperparameter_path)
         # self._check_robot_type_from_params()
 
-        self.setup_action_space()
+        self.setup_action_space(extend=False)
         self.setup_reward_calculator()
 
         self.observation_collector = ObservationCollector(
@@ -135,6 +138,10 @@ class BaseDRLAgent(ABC):
         return self.agent_goal
     def set_agent_goal(self, goal):
         self.agent_goal = goal
+    def get_reserved_status(self):
+        return self.reserved_goal
+    def set_reserved_status(self,a):
+        self.reserved_goal = a
     def read_setting_files(
         self, robot_setting_yaml: str, action_space_yaml: str
     ) -> None:
@@ -210,7 +217,7 @@ class BaseDRLAgent(ABC):
             f"({self.robot_model} != {self._agent_params['robot']})"
         )
 
-    def setup_action_space(self) -> None:
+    def setup_action_space(self, extend=False) -> None:
         """Sets up the action space. (spaces.Box)"""
         assert self._discrete_actions or self._cont_actions
         assert self._agent_params and "discrete_action_space" in self._agent_params
@@ -254,16 +261,20 @@ class BaseDRLAgent(ABC):
                     ),
                     dtype=float,
                 )
+        if self.extend:
+            self._action_space = BaseDRLAgent._stack_spaces((self._action_space, spaces.Box(low=0,high=5,shape=(1,),dtype=np.uint8,)))
 
     def setup_reward_calculator(self) -> None:
         """Sets up the reward calculator."""
         assert self._agent_params and "reward_fnc" in self._agent_params
+
+        rule = self._agent_params["reward_fnc"] if self.extend else "rule_07"
         self.reward_calculator = RewardCalculator(
             holonomic=self._holonomic,
             robot_radius=self._robot_radius,
             safe_dist=1.6 * self._robot_radius,
             goal_radius=GOAL_RADIUS,
-            rule = "rule_07",
+            rule = rule,
             #rule=self._agent_params["reward_fnc"],
             extended_eval=False,
         )
@@ -405,3 +416,12 @@ class BaseDRLAgent(ABC):
         action_msg.linear.x = action[0]
         action_msg.angular.z = action[1]
         return action_msg
+
+    @staticmethod
+    def _stack_spaces(ss: Tuple[spaces.Box]):
+        low = []
+        high = []
+        for space in ss:
+            low.extend(space.low.tolist())
+            high.extend(space.high.tolist())
+        return spaces.Box(np.array(low).flatten(), np.array(high).flatten())

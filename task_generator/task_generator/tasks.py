@@ -326,19 +326,30 @@ class CasesMARLTask(ABSMARLTask):
         robots = self.robot_manager[msg.robot_type]
         robots: List[RobotManager] = robots
         for robot in robots:
-            if robot.robot_id == msg.robot_id:
+            if robot.robot_id == msg.robot_id.split("/")[-1]:
                 break
         else:
+            print([r.robot_id for r in robots])
             raise ValueError(f'Robot: type: {msg.robot_type} id: "{msg.robot_id}" is not recognized.')
 
         if action == crate_action.PICKUP:
-            crate = self.ctm.pickup_crate(self.open_tasks[msg.crate_id].robot_goal, robot) # crate at msg.goal is picked up by robot
-            new_goal = crate.get_goal()
-            robot.publish_goal(new_goal.x + self.configs['origin'][0], new_goal.y + self.configs['origin'][1], new_goal.theta)
+            try:
+                crate = self.ctm.pickup_crate(msg.robot_goal, robot) # crate at msg.goal is picked up by robot
+                new_goal = crate.get_goal()
+                new_goal.x += 0.5
+                new_goal.y += 0.5
+
+                robot.publish_goal(new_goal.x + self.configs['origin'][0], new_goal.y + self.configs['origin'][1], new_goal.theta)
+            except:
+                print("something went wrong")
             self.publisher_task_status()
 
         elif action == crate_action.DROPOFF:
             self.ctm.drop_crate(msg.crate_id)
+            self.publisher_task_status()
+
+        elif action == crate_action.BLOCK:
+            self.ctm.block_goal(msg.crate_id)
             self.publisher_task_status()
 
     def publisher_task_status(self):

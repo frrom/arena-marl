@@ -70,6 +70,7 @@ class Visualizer:
         print('________goal list recieved_________')
         self.new_map_received = True
         tmp_map = copy.deepcopy(self.map_original)
+        #tmp_map = np.flip(tmp_map, axis=0) 
         for robot_goal_ in data.open_tasks:
             idx = robot_goal_.robot_goal
             print(idx)
@@ -157,8 +158,9 @@ class Visualizer:
 
     def add_markers(self):
         '''adds markers for all shelf/goal cells'''
-        grid = np.flip(self.map)
-        #print(grid)
+        #grid = np.flip(self.map,axis=0)
+        grid = self.map
+        print(grid)
         
         indices = np.stack(np.where(grid>0),1)
         for x,y in indices:
@@ -182,7 +184,7 @@ class Visualizer:
         topic = 'visualization_marker_array'
         publisher = rospy.Publisher(topic, MarkerArray, queue_size=1000)
 
-        rospy.init_node(f"{self.ns}/visualizer", anonymous=True)
+        rospy.init_node('visualizer', anonymous=True)
         rate = rospy.Rate(10)
         print('----initialized nodes---')
         
@@ -254,12 +256,13 @@ class Visualizer:
 
 if __name__ == "__main__":
     #mapyaml = rospy.get_param('/grid_vis/map_path')
-    args = rospy.myargv(args=sys.argv)
-    if len(args) != 2:
-        print("no arguments found")
-        ns = 'sim_1'
-    else:
-        ns = args[1]
+    # args = rospy.myargv(argv=sys.argv)
+    # if len(args) != 2:
+    #     print("no arguments found")
+    #     ns = 'sim_1'
+    # else:
+    #     ns = args[1]
+    ns = 'sim_1'
     print(ns)
     mapyaml = '/'.join([rospkg.RosPack().get_path('arena-simulation-setup'), 'maps', 'gridworld', 'map.yaml'])
     #rospy.get_param('/ns')

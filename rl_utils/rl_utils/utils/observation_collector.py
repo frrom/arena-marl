@@ -129,6 +129,7 @@ class ObservationCollector:
         self._globalplan = np.array([])
         self._subgoals = np.array([])
         self._crate_list = np.array([])
+        self._id_list = np.array([])
 
         # train mode?
         self._is_train_mode = rospy.get_param("/train_mode")
@@ -270,6 +271,10 @@ class ObservationCollector:
             "global_plan": self._globalplan,
             "robot_pose": self._robot_pose,
             "last_action": kwargs.get("last_action", np.array([0, 0, 0])),
+            "current_pos": self._robot_pose,
+            "ids": self._id_list,
+            "obs_goals": self._subgoals,
+            "obs_crates": self._crate_list
         }
 
         self._laser_deque.clear()
@@ -353,14 +358,17 @@ class ObservationCollector:
     def callback_subgoals(self, msg: robot_goal_list):
         goal_list = []
         crate_list = []
+        ids = []
         #print(msg)
         for r_goal in msg.open_tasks:
             goal_list.append(r_goal.robot_goal)
             crate_list.append(r_goal.crate_goal)
+            ids.append(r_goal.crate_id)
             # goal_list.append(self.pose3D_to_pose2D(r_goal.robot_goal))
             # crate_list.append(self.pose3D_to_pose2D(r_goal.crate_goal))
         self._subgoals = goal_list
         self._crate_list = crate_list
+        self._id_list = ids
         return
 
     def callback_global_plan(self, msg_global_plan):

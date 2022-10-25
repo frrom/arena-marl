@@ -36,6 +36,8 @@
   <!-- parameter for warehouse szenario: observation space is changed -->
   <arg name="observable_task_goals" default="5" />
 
+  <arg name="choose_goal" default="false" />
+
   <!--  PARAMS DON'T CHANGE THEM  -->
   <param name="update_rate" value="$(arg update_rate)" />
   <param name="use_sim_time" value="true" />
@@ -79,6 +81,11 @@
     <arg name="num_envs" value="$(arg num_envs)" />
     <arg name="ns_prefix" value="$(arg ns_prefix)" />
     <arg name="num_robots" value="$(arg num_robots)" />
+    <arg name="warehouse" value="$(arg warehouse)" />
+  </include> 
+
+  <include file="$(find arena_bringup)/launch/visualization_training.launch">
+    <arg name="rviz_file" value="nav_MARL" />
     <arg name="warehouse" value="$(arg warehouse)" />
   </include> 
 </launch>

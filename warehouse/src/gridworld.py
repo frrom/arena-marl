@@ -73,10 +73,11 @@ class Map:
             self.increase_highways()
         
         if self.additional_goals is not None:
+            print("add additional goals")
             self.add_goals_NWO(self.additional_goals )
 
         self.grid = self.add_walls(self.grid)
-        self.map = self.generate_map(self.upscale_grid(self.grid,self.scale), self.column_height)
+        self.map = self.generate_map(self.upscale_grid(np.flip(self.grid,axis=0),self.scale), self.column_height)
         self.grid_size = self.grid.shape
 
 
@@ -95,8 +96,8 @@ class Map:
 
             os.mkdir(setup_pth)
 
-        y_origin = 0
-        x_origin = 0
+        self.y_origin = 0
+        self.x_origin = 0
         map_world_yaml = {'properties': {'velocity_iterations': 10, 'position_iterations': 10},
                     'layers': [{'name': 'static', 'map': 'map.yaml', 'color': [0, 1, 0, 1]}]}
         map_yaml = {'image': 'map.png', 'resolution': 0.01, 'origin': [self.x_origin, self.y_origin, 0.0],
