@@ -202,7 +202,7 @@ def create_training_setup(config: dict, wandb_logger) -> dict:
                 robot_type=robot_name, managers=robot_manager_dict[f"sim_{i}"]
             )
 
-        env = vec_env_create(
+        env, observation_space = vec_env_create(
             env_fn,
             agent_dict,
             task_managers=task_managers,
@@ -221,6 +221,7 @@ def create_training_setup(config: dict, wandb_logger) -> dict:
             hyper_params,
             config["n_envs"],
             wandb_logger,
+            #observation_space
         )
 
         # add configuration for one robot to robots dictionary
@@ -269,7 +270,7 @@ def create_deployment_setup(config: dict) -> dict:
         ns="eval_sim",
         mode=config["task_mode"],
         curriculum_path=config["evaluation_curriculum"]["evaluation_curriculum_file"],
-        cases_grid_map=config["cases_map_path"]
+        #cases_grid_map=config["cases_map_path"]
     )
 
     ### create and set obstacle manager
@@ -876,7 +877,7 @@ def load_vec_normalize(params: dict, PATHS: dict, env: VecEnv, eval_env: VecEnv)
 
 
 def choose_agent_model(
-    robot_name, PATHS, config, env, params, n_envs, wandb_logger=None
+    robot_name, PATHS, config, env, params, n_envs, wandb_logger=None, obs_space = None
 ):
     # avoid circular import
     from rosnav.model.agent_factory import AgentFactory
@@ -888,6 +889,7 @@ def choose_agent_model(
         ] = AgentFactory.instantiate(
             config["architecture_name"], #robot_model=robot_name TODOs
         )
+        print(PATHS.get("tb"))
         if isinstance(agent, BaseAgent):
             model = PPO(
                 agent.type.value,

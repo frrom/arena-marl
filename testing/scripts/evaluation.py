@@ -81,6 +81,7 @@ def evaluate_policy(
     default_episode_reward = {
         robot: {a: 0 for a in agent_names[robot]} for robot in robots
     }
+    succ_eval = []
     while len(episode_lengths) < n_eval_episodes:
         # Number of loops here might differ from true episodes
         # played, if underlying wrappers modify episode lengths.
@@ -180,6 +181,7 @@ def evaluate_policy(
                     # if [key for key in infos[robot][agent]].count("is_success")
                 ]
             )
+            succ_eval.append(np.mean([infos[robot][agent]["is_success"] for agent in infos[robot]]))
             ### Count the reasons for termination
             #   For debugging
             #   idx 0-2: done reasons count
@@ -217,6 +219,9 @@ def evaluate_policy(
         }
         for robot in robots
     }
+
+    print("success rate: ")
+    print(np.mean(succ_eval))
 
     ### Calculate standard deviation of rewards
     std_rewards = {

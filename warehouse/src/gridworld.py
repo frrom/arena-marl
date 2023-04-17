@@ -34,7 +34,7 @@ class Map:
         
         #Addtional Map Changes
         self.bigger_highways = bigger_highways
-        self.additional_goals = additional_goals
+        self.additional_goals = None
 
         #Meta Stuff
         self.setup_name = setup_name
@@ -77,6 +77,9 @@ class Map:
             self.add_goals_NWO(self.additional_goals )
 
         self.grid = self.add_walls(self.grid)
+        print(self.grid)
+        print(self.scale)
+        print(self.column_height)
         self.map = self.generate_map(self.upscale_grid(np.flip(self.grid,axis=0),self.scale), self.column_height)
         self.grid_size = self.grid.shape
 
@@ -138,9 +141,10 @@ class Map:
         assert shelf_columns % 2 == 1, "Only odd number of shelf columns is supported"
 
         grid_size = (
-            (column_height + 1) * shelf_rows + 2,
+            (column_height+1)*shelf_rows + 2,
             (2 + 1) * shelf_columns + 1,
         )
+        print(grid_size)
         column_height = column_height
         grid = np.zeros((2, *grid_size), dtype=np.int32)
         goals = [
@@ -152,17 +156,17 @@ class Map:
 
         highway_func = lambda x, y: (
             (x % 3 == 0)  # vertical highways
-            or (y % (column_height + 1) == 0)  # horizontal highways
+            or (y % (column_height + 1 ) == 0)  # horizontal highways
             or (y == grid_size[0] - 1)  # delivery row
             or (  # remove a box for queuing
-                (y > grid_size[0] - (column_height + 3))
-                and ((x == grid_size[1] // 2 - 1) or (x == grid_size[1] // 2))
+                (y > (grid_size[0] - 3)) and
+                ((x == grid_size[1] // 2 - 1) or (x == grid_size[1] // 2))
             )
         )
         for x in range(grid_size[1]):
             for y in range(grid_size[0]):
                 highways[y, x] = highway_func(x, y)
-        
+        print(highways)
         for x,y in goals:
             highways[y,x]=FREE_GOAL
 
@@ -182,7 +186,9 @@ class Map:
         tmp_arr[tmp_arr==WALL]=0
         
         _,thresh = cv.threshold(tmp_arr,1, 255,0)
-        _, cntrs, _ = cv.findContours(thresh.astype(np.uint8), cv.RETR_TREE,cv.CHAIN_APPROX_SIMPLE)
+        print("thresh:")
+        print(thresh.astype(np.uint8),cv.RETR_TREE,cv.CHAIN_APPROX_SIMPLE)
+        cntrs, _ = cv.findContours(thresh.astype(np.uint8), cv.RETR_TREE,cv.CHAIN_APPROX_SIMPLE)
         lines_vert = []
         lines_hori = []
         

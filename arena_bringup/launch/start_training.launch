@@ -35,10 +35,15 @@
 
   <!-- parameter for warehouse szenario: observation space is changed -->
   <arg name="observable_task_goals" default="5" />
+  <arg name="num_ports" default="2" />
+
 
   <arg name="choose_goal" default="false" />
 
   <!--  PARAMS DON'T CHANGE THEM  -->
+  <param name="warehouse" value="$(arg warehouse)" />
+  <param name="observable_task_goals" value="$(arg observable_task_goals)" />
+  <param name="num_ports" value="$(arg num_ports)" />
   <param name="update_rate" value="$(arg update_rate)" />
   <param name="use_sim_time" value="true" />
   <param name="train_mode" value="$(arg train_mode)" />

@@ -15,7 +15,7 @@
   <arg name="viz_pub_rate" default="30" />
 
   <!-- the folder name under the path arena-simulation-setup/maps  -->
-  <arg name="map_folder_name" default="map_empty" />
+  <arg name="map_folder_name" default="gridworld" />
   <arg name="map_path" default="$(find arena-simulation-setup)/maps/$(arg map_folder_name)/map.yaml" />
 
   <!-- the velocity of randomly genelized obstacles  -->
@@ -25,7 +25,20 @@
   <!-- If observations contain the previous actions -->
   <arg name="actions_in_obs" default="true" />
 
+  <!-- parameter for warehouse szenario: observation space is changed -->
+  <arg name="warehouse" default="true" />
+
+  <!-- parameter for warehouse szenario: observation space is changed -->
+  <arg name="observable_task_goals" default="5" />
+  <arg name="num_ports" default="2" />
+
+
+  <arg name="choose_goal" default="false" />
+
   <!--  PARAMS DON'T CHANGE THEM  -->
+  <param name="warehouse" value="$(arg warehouse)" />
+  <param name="observable_task_goals" value="$(arg observable_task_goals)" />
+  <param name="num_ports" value="$(arg num_ports)" />
   <param name="update_rate" value="$(arg update_rate)" />
   <param name="use_sim_time" value="true" />
   <param name="train_mode" value="$(arg train_mode)" />
@@ -38,6 +51,7 @@
   <param name="robot_action_rate"     value="5"/>
   <param name="laser_update_rate"     value="10"/>
   <param name="actions_in_obs" value="$(arg actions_in_obs)" />
+  <param name="prefix" value="$(arg ns_prefix)" />
 
 
   <!-- map server-->
@@ -58,6 +72,12 @@
   <include file="$(find arena_bringup)/launch/sublaunch_training/marl_single_env_training.launch">
     <arg name="ns" value="eval_sim" />
     <arg name="num_robots" value="$(arg num_robots)" />
+    <arg name="warehouse" value="$(arg warehouse)" />
   </include>
+
+  <include file="$(find arena_bringup)/launch/visualization_training.launch">
+    <arg name="rviz_file" value="nav_MARL" />
+    <arg name="warehouse" value="$(arg warehouse)" />
+  </include> 
 
 </launch>

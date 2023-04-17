@@ -10,17 +10,17 @@ no_gpu: false
 
 ### Global configuration that applies to all robots
 # navigation task mode, chose from "random" , "staged" or "cases"
-task_mode: "random"
+task_mode: "cases"
 cases_grid_map_path: "/home/u20/MARL_ws/src/forks/arena-simulation-setup/maps/warehouse_1_cases/grid.npy"
 # number of simulation timesteps
 n_timesteps: 40000000
-max_num_moves_per_eps: 1000
+max_num_moves_per_eps: 300
 
 periodic_eval:
   # max number of steps per episode
-  max_num_moves_per_eps: 1000
+  max_num_moves_per_eps: 300
   # number of evaluation episodes
-  n_eval_episodes: 4 #100
+  n_eval_episodes: 15 #100
   # evaluation frequency, evaluation after every n_envs * 20000 timesteps
   eval_freq: 20000
 
@@ -29,7 +29,7 @@ periodic_eval:
 # can be either "succ" (success rate) or "rew" (reward)
 evaluation_curriculum:
   # file for the robot's learning curriculum
-  evaluation_curriculum_file: "default.yaml"
+  evaluation_curriculum_file: "marl_warehouse.yaml"
   threshold_type: "succ"
   upper_threshold: 0.8
   lower_threshold: 0.6
@@ -40,6 +40,18 @@ eval_log: false
 tb: false
 
 robots:
+  jackal:
+    # number of robots of this type
+    num_robots: 4
+    # name of hyperparameter file located in the configs/hyperparameters directory
+    hyperparameter_file: "jackal.json" # "default.json"
+    # name of architecture defined in the Policy factory
+    architecture_name: "AGENT_26"
+
+    # path to latest checkpoint; if provided the training will be resumed from that checkpoint
+    resume:  "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_04_06__18_19/jackal_2023_04_06__18_19"
+    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_04_04__13_58/jackal_2023_04_04__13_58"
+    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/best_comm_model/jackal_2023_02_28__15_19"
   # jackal:
   #   # number of robots of this type
   #   num_robots: 4
@@ -60,14 +72,14 @@ robots:
   #   # path to latest checkpoint; if provided the training will be resumed from that checkpoint
   #   resume: "/home/u20/MARL_ws/src/planners/rosnav/agents/burger"
 
-  rto:
-    # number of robots of this type
-    num_robots: 2
-    # name of hyperparameter file located in the configs/hyperparameters directory
-    hyperparameter_file: "default.json"
-    # name of architecture defined in the Policy factory
-    architecture_name: "AGENT_24"
-    # path to latest checkpoint; if provided the training will be resumed from that checkpoint
-    resume: "/home/u20/MARL_ws/src/planners/rosnav/agents/rto_tlabs"
-  # # add more robots as you wish
+  # rto:
+  #   # number of robots of this type
+  #   num_robots: 4
+  #   # name of hyperparameter file located in the configs/hyperparameters directory
+  #   hyperparameter_file: "jackal.json"
+  #   # name of architecture defined in the Policy factory
+  #   architecture_name: "AGENT_26"
+  #   # path to latest checkpoint; if provided the training will be resumed from that checkpoint
+  #   resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_02_28__15_19/jackal_2023_02_28__15_19"
+  # # # add more robots as you wish
   

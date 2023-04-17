@@ -61,7 +61,11 @@ class BaseDRLAgent(ABC):
         self.package_bool = False
         self.reserved_goal = False
         self.agent_goal = [Pose2D()]
-        self.extend = self._is_train_mode = rospy.get_param("choose_goal")
+        self.position = Pose2D()
+        self.extend = rospy.get_param("choose_goal", default = False)
+        self.ports = int(rospy.get_param("num_ports"))
+        self.max_steps = int(rospy.get_param("n_moves"))
+        #print(self.extend)
 
         robot_setting_path = os.path.join(
             ROOT_ROBOT_PATH, f"{self.robot_model}", f"{self.robot_model}.model.yaml"
@@ -262,7 +266,9 @@ class BaseDRLAgent(ABC):
                     dtype=float,
                 )
         if self.extend:
+            print("using extended action space")
             self._action_space = BaseDRLAgent._stack_spaces((self._action_space, spaces.Box(low=0,high=5,shape=(1,),dtype=np.uint8,)))
+        self._action_space = BaseDRLAgent._stack_spaces((self._action_space, spaces.Box(low=0,high=2,shape=(self.ports,),dtype=np.uint8,)))
 
     def setup_reward_calculator(self) -> None:
         """Sets up the reward calculator."""
@@ -277,6 +283,7 @@ class BaseDRLAgent(ABC):
             rule = rule,
             #rule=self._agent_params["reward_fnc"],
             extended_eval=False,
+            max_steps = self.max_steps
         )
 
     @property
@@ -305,12 +312,12 @@ class BaseDRLAgent(ABC):
                 Tuple, where first entry depicts the observation data concatenated \
                 into one array. Second entry represents the observation dictionary.
         """
-        merged_obs, obs_dict = self.observation_collector.get_observations()
+        self.merged_obs, self.obs_dict = self.observation_collector.get_observations()
         # pack_trafo = 1 if self.package_bool else 0
         # merged_obs[-1] = pack_trafo
         # if self._agent_params["normalize"]:
         #     merged_obs = self.normalize_observations(merged_obs)
-        return merged_obs, obs_dict
+        return self.merged_obs, self.obs_dict
 
     def normalize_observations(self, merged_obs: np.ndarray) -> np.ndarray:
         """Normalizes the observations with the loaded VecNormalize object.

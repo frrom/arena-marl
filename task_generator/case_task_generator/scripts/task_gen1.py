@@ -188,6 +188,7 @@ class CaseTaskManager():
         for crate in self.active_crates:
             if not crate.delivered:
                 crate_ids.append(crate.index)
+                #print(crate.current_location)
                 crate_locations.append(self.numpy_to_pose2d(crate.current_location/resolution)) if crate.index not in self.blocked else crate_locations.append(self.numpy_to_pose2d(np.array([-0.5,-0.5])))
                 crate_goals.append(self.numpy_to_pose2d(crate.goal/resolution))
         
@@ -221,8 +222,9 @@ class CaseTaskManager():
             generated_tasks = 0
             while generated_tasks < nr_tasks:
                 free_goals = self._find(FREE_GOAL)
-                #task_type = free_goals.shape[0] > 1
                 task_type = random.randint(0,2) == 0
+                # if not free_goals.shape[0] > 1:
+                #     task_type = False
                 success = self.generate_new_task(tasks[task_type])
                 generated_tasks += 1
                 

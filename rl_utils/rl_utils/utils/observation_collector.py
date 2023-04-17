@@ -56,7 +56,9 @@ class ObservationCollector:
         else:
             self.ns_prefix = "/" + ns + "/"
         self._sim = ns.split('/')[0]
-
+        self.ports = int(rospy.get_param("num_ports"))
+        self.num_robots = int(rospy.get_param("num_robots"))
+        self.extend = rospy.get_param("warehouse", default = True)
         self._action_in_obs = rospy.get_param("actions_in_obs", default=False)
 
         # define observation_space
@@ -82,14 +84,6 @@ class ObservationCollector:
                         shape=(num_lidar_beams,),
                         dtype=np.float32,
                     ),
-                    spaces.Box(low=0, high=15, shape=(self.obs_goals,), dtype=np.float32),  # rho
-                    spaces.Box(
-                        low=-np.pi,
-                        high=np.pi,
-                        shape=(self.obs_goals,),
-                        dtype=np.float32,  # theta
-                    ),
-                    spaces.Box(low=0, high=15, shape=(self.obs_goals,), dtype=np.float32), #target distance
                     spaces.Box(
                         low=-2.0,
                         high=2.0,
@@ -110,6 +104,12 @@ class ObservationCollector:
                         dtype=np.float32,  # theta_goal
                     ),
                     spaces.Box(
+                        low=0.0,
+                        high=40.0,
+                        shape=(2,),
+                        dtype=np.float32,  # current position
+                    ),
+                    spaces.Box(
                         low=0,
                         high=1,
                         shape=(1,),
@@ -117,6 +117,65 @@ class ObservationCollector:
                     ),
                 )
             )
+        if self.extend:
+            self.observation_space = ObservationCollector._stack_spaces((
+                spaces.Box(low=0, high=15, shape=(self.obs_goals,), dtype=np.float32),  # rho
+                spaces.Box(
+                    low=-np.pi,
+                    high=np.pi,
+                    shape=(self.obs_goals,),
+                    dtype=np.float32,  # theta
+                ),
+                spaces.Box(low=0, high=15, shape=(self.obs_goals,), dtype=np.float32), #target distance
+                self.observation_space))
+        if self.ports > 0:
+            for i in range(self.ports):
+                self.observation_space = ObservationCollector._stack_spaces((self.observation_space,
+                    spaces.Box(
+                        low=0,
+                        high=lidar_range,
+                        shape=(num_lidar_beams,),
+                        dtype=np.float32,
+                    ),
+                    spaces.Box(
+                        low=-2.0,
+                        high=2.0,
+                        shape=(2,),
+                        dtype=np.float32,  # linear vel
+                    ),
+                    spaces.Box(
+                        low=-4.0,
+                        high=4.0,
+                        shape=(1,),
+                        dtype=np.float32,  # angular vel
+                    ),
+                    spaces.Box(low=0, high=15, shape=(1,), dtype=np.float32),  # rho_goal
+                    spaces.Box(
+                        low=-np.pi,
+                        high=np.pi,
+                        shape=(1,),
+                        dtype=np.float32,  # theta_goal
+                    ),
+                    spaces.Box(
+                        low=0.0,
+                        high=40.0,
+                        shape=(2,),
+                        dtype=np.float32,  # current position
+                    ),
+                    spaces.Box(
+                        low=0,
+                        high=1,
+                        shape=(1,),
+                        dtype=np.uint8,  # package_boolean
+                    ),
+                ))
+            self.observation_space = ObservationCollector._stack_spaces((self.observation_space,
+                spaces.Box(
+                        low=0,
+                        high=self.num_robots,
+                        shape=(self.ports,),
+                        dtype=np.uint8,  #robots to choose from
+                    )))
         self._laser_num_beams = num_lidar_beams
         # for frequency controlling
         self._action_frequency = 1 / rospy.get_param("/robot_action_rate")
@@ -187,8 +246,12 @@ class ObservationCollector:
             goal_topic, PoseStamped, self.callback_subgoal
         )
         self._subgoals_sub = rospy.Subscriber(
-            f"{self._sim}/open_tasks", robot_goal_list, self.callback_subgoals
+            f"{self.ns_prefix}open_tasks", robot_goal_list, self.callback_subgoals #first training stage
         )
+        self._subgoals2_sub = rospy.Subscriber(
+            f"{self._sim}/open_tasks", robot_goal_list, self.callback_subgoals #last training stage (full warehouse)
+        )
+
         self._globalplan_sub = rospy.Subscriber(
             f"{self.ns_prefix}globalPlan", Path, self.callback_global_plan
         )
@@ -232,7 +295,7 @@ class ObservationCollector:
         goal_dists = np.zeros((self.obs_goals))
         pub_goals = np.zeros((self.obs_goals,2))
         pub_crates = np.zeros((self.obs_goals,2))
-        test = self._subgoals
+        
         for i, goal in enumerate(self._subgoals):
             rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
                 goal, self._robot_pose
@@ -246,26 +309,43 @@ class ObservationCollector:
                 self._crate_list[i], goal)
             else:
                 break
-
+        rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(self._subgoal, self._robot_pose)
         merged_obs = (
             np.hstack([scan, np.array([rho, theta])])
             if not self._action_in_obs
             else np.hstack(
                 [
                     scan,
-                    pub_goals[:,0],
-                    pub_goals[:,1],
-                    goal_dists,
                     kwargs.get("last_action", np.array([0, 0, 0])),
-                    np.array([0,0]),
+                    np.array([rho,theta]),
+                    np.array([self._robot_pose.x, self._robot_pose.y]),
                     np.array([0])
+
                 ]
             )
         )
-
+        msg_size = 0
+        if self.ports > 0:
+            msg_size = merged_obs.size*self.ports + self.ports
+            msgs = np.zeros(msg_size)
+            merged_obs = np.hstack(
+                [
+                merged_obs,
+                msgs
+                ])
+        if self.extend:
+            merged_obs = np.hstack(
+                [
+                pub_goals[:,0],
+                pub_goals[:,1],
+                goal_dists,
+                merged_obs
+                ])
+        
+        
         obs_dict = {
             "laser_scan": scan,
-            "goal_in_robot_frame": [0, 0],
+            "goal_in_robot_frame": [rho, theta],
             "goals_in_robot_frame": pub_goals,
             "crates_in_robot_frame": pub_crates,
             "global_plan": self._globalplan,
@@ -274,7 +354,8 @@ class ObservationCollector:
             "current_pos": self._robot_pose,
             "ids": self._id_list,
             "obs_goals": self._subgoals,
-            "obs_crates": self._crate_list
+            "obs_crates": self._crate_list,
+            "msg_size": msg_size
         }
 
         self._laser_deque.clear()

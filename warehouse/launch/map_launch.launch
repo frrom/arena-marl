@@ -51,7 +51,7 @@
 
 
   <arg name="shelf_cols" default="1"/>
-  <arg name="shelf_rows" default="2"/>
+  <arg name="shelf_rows" default="1"/>
   <arg name="col_height" default="5"/>
   <arg name="bigger_highways" default="True"/>
   <arg name="random_map" default="False"/>

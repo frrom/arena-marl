@@ -140,6 +140,7 @@ class CrateStack:
             return crate
 
         except KeyError as e:
+            print(self._crate_map)
             warnings.warn(f'{crate_location} does not have a Crate.', CrateWarning)
 
     def drop_crate(self, crate_index: int, drop_location: np.ndarray):

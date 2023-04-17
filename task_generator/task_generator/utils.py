@@ -2,6 +2,7 @@ import math
 import numpy as np
 from nav_msgs.msg import OccupancyGrid
 import random
+from geometry_msgs.msg import Pose2D
 
 
 def generate_freespace_indices(map_: OccupancyGrid) -> tuple:
@@ -17,7 +18,7 @@ def generate_freespace_indices(map_: OccupancyGrid) -> tuple:
     return indices_y_x
 
 
-def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: float, forbidden_zones: list = None):
+def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: float, forbidden_zones: list = None, start_pos = None, max_dist = 1000):
     """
     Args:
         indices_y_x(tuple): a 2 elementary tuple stores the indices of the non-occupied cells, the first element is the y-axis indices,
@@ -28,7 +29,7 @@ def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: fl
        x_in_meters,y_in_meters,theta
     """
 
-    def is_pos_valid(x_in_meters, y_in_meters):
+    def is_pos_valid(x_in_meters, y_in_meters, start_pos, max_dist):
         for forbidden_zone in forbidden_zones:
             if (
                 forbidden_zone
@@ -37,6 +38,8 @@ def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: fl
             ):
                 return False
 
+        if start_pos is not None and np.sqrt((x_in_meters-start_pos.x)**2 + (y_in_meters-start_pos.y)**2) > max_dist:
+            return False
         # in pixel
         cell_radius = int(safe_dist / map_.info.resolution)
         x_index = int((x_in_meters - map_.info.origin.position.x) // map_.info.resolution)
@@ -76,10 +79,12 @@ def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: fl
         # convert x, y in meters
         y_in_meters = y_in_cells * map_.info.resolution + map_.info.origin.position.y
         x_in_meters = x_in_cells * map_.info.resolution + map_.info.origin.position.x
-        pos_valid = is_pos_valid(x_in_meters, y_in_meters)
+        pos_valid = is_pos_valid(x_in_meters, y_in_meters, start_pos, max_dist)
         if not pos_valid:
             n_check_failed += 1
-            if n_check_failed > 100:
+            if n_check_failed > 200:
+                print("no valid position found")
+                return get_random_pos_on_map(free_space_indices, map_, safe_dist, forbidden_zones)
                 raise Exception("cann't find any no-occupied space please check the map information")
         # in radius
     theta = random.uniform(-math.pi, math.pi)

@@ -63,7 +63,7 @@ class InitiateNewTrainStage(BaseCallback):
         self._trigger.data = True
 
         self.activated = False
-        if task_mode == "staged":
+        if task_mode == "staged" or task_mode == "cases":
             self.activated = True
             self._instantiate_publishers()
 
@@ -98,7 +98,7 @@ class InitiateNewTrainStage(BaseCallback):
             ), "succ thresholds have to be between [1.0, 0.0]"
 
         self.verbose = verbose
-        self.activated = bool(task_mode == "staged")
+        self.activated = bool(task_mode == "staged" or task_mode == "cases")
 
         if self.activated:
             rospy.set_param("/last_stage_reached", False)
@@ -138,7 +138,8 @@ class InitiateNewTrainStage(BaseCallback):
                     "results might not represent agent performance well"
                     % EvalObject.n_eval_episodes
                 )
-
+            print("success rate: ")
+            print(np.asarray([sr for sr in EvalObject.last_success_rates.values()]))
             if self._check_lower_threshold(EvalObject):
                 if self.verbose:
                     print("Dropped below lower threshold, going to previous stage.")

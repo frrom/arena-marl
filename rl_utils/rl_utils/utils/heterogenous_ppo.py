@@ -208,15 +208,6 @@ class Heterogenous_PPO(object):
                     actions
                 )  # Apply dummy action
 
-                ### Print size of rollout buffer
-                #   For debugging purposes
-                # if n_steps % 100 == 0:
-                #     print(
-                #         "Size of rollout buffer for agent {}: {}".format(
-                #             agent, rollout_buffers[agent].pos
-                #         )
-                #     )
-
                 # only continue memorizing experiences if buffer is not full
                 # and if at least one robot is still alive
                 if not complete_collection_dict[
@@ -458,14 +449,23 @@ class Heterogenous_PPO(object):
             buffer.reset()
 
     def reset_all_envs(self) -> None:
-        for agent, env in self.agent_env_dict.items():
-            # reset states
-            env.reset()
-            # retrieve new simulation state
-            self.agent_ppo_dict[agent]._last_obs = env.reset()
-        # perform one step in each simulation to update the scene
-        for i in range(1, self.n_envs + 1):
-            call_service_takeSimStep(ns=self.ns_prefix + str(i))
+        st = 0
+        while st < 5:
+            #try:
+            for agent, env in self.agent_env_dict.items():
+                # reset states
+                env.reset()
+                # retrieve new simulation state
+                self.agent_ppo_dict[agent]._last_obs = env.reset()
+            # perform one step in each simulation to update the scene
+            for i in range(1, self.n_envs + 1):
+                call_service_takeSimStep(ns=self.ns_prefix + str(i))
+            break
+            # except:
+            #     print("reset failed")
+            #     st += 1
+        if st >= 5:
+            raise RuntimeError
 
     def _update_current_progress_remaining(
         self, num_timesteps: int, total_timesteps: int

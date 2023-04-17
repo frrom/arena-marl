@@ -9,9 +9,29 @@ def main(args):
 
     # load configuration
     config = load_config(args.config)
-
+    setting = 0
     # set debug_mode - this mode hinders the creation of several training directories and models
     rospy.set_param("debug_mode", config["debug_mode"])
+    rospy.set_param("n_moves", config["max_num_moves_per_eps"])
+    if setting == -1:
+        rospy.set_param("observable_task_goals", 0)
+        rospy.set_param("num_ports", 0)
+        rospy.set_param("warehouse", False)
+        rospy.set_param("choose_goal", False)
+    if setting == 0:
+        rospy.set_param("observable_task_goals", 5)
+        rospy.set_param("num_ports", 0)
+        rospy.set_param("warehouse", True)
+        rospy.set_param("choose_goal", True)
+    if setting == 1:
+        rospy.set_param("num_ports", 2)
+        rospy.set_param("observable_task_goals", 5)
+        rospy.set_param("warehouse", True)
+        rospy.set_param("choose_goal", False)
+    if setting == 2:
+        rospy.set_param("num_ports", 2)
+        rospy.set_param("warehouse", True)
+        rospy.set_param("choose_goal", True)
 
     # create dicts for all robot types with all necessary parameters
     robots = create_deployment_setup(config)

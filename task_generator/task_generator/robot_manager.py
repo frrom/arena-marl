@@ -203,6 +203,14 @@ class RobotManager:
             self._free_space_indices, self.map, self.ROBOT_RADIUS * 2
         )
         self.move_robot(start_pos)
+    
+    def get_random_pos(self, start_pos: Union[Pose2D, None] = None, max_dist = None, forbidden_zones=None):
+        start = start_pos if max_dist is not None else None
+        goal_pos_ = Pose2D()
+        (goal_pos_.x, goal_pos_.y, goal_pos_.theta,) = get_random_pos_on_map(
+            self._free_space_indices, self.map, self.ROBOT_RADIUS * 2,forbidden_zones=forbidden_zones, start_pos=start, max_dist=max_dist
+        )
+        return goal_pos_
 
     def set_start_pos_goal_pos(
         self,
@@ -210,6 +218,7 @@ class RobotManager:
         goal_pos: Union[Pose2D, None] = None,
         min_dist=1,
         forbidden_zones: Union[list, None] = None,
+        max_dist = None,
     ):
         """Set up start position and the goal postion. Path validation checking will be conducted. If it failed, an
         exception will be raised.
@@ -249,9 +258,10 @@ class RobotManager:
                 start_pos_ = start_pos
 
             if goal_pos is None:
+                start = start_pos_ if max_dist is not None else None
                 goal_pos_ = Pose2D()
                 (goal_pos_.x, goal_pos_.y, goal_pos_.theta,) = get_random_pos_on_map(
-                    self._free_space_indices, self.map, self.ROBOT_RADIUS * 2
+                    self._free_space_indices, self.map, self.ROBOT_RADIUS * 2, start_pos=start, max_dist=max_dist
                 )
             else:
                 goal_pos_ = goal_pos

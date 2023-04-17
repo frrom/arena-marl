@@ -15,6 +15,7 @@ class RewardCalculator:
         goal_radius: float,
         rule: str = "rule_00",
         extended_eval: bool = False,
+        max_steps = 400,
     ):
         """
         A class for calculating reward based various rules.
@@ -28,7 +29,7 @@ class RewardCalculator:
         # additional info will be stored here and be returned alonge with reward.
         self.info = {}
         self.holonomic = holonomic
-        self.robot_radius = robot_radius
+        self.robot_radius = 1.1*robot_radius
         self.goal_radius = goal_radius
         self.last_goal_dist = None
         self.last_dist_to_path = None
@@ -37,7 +38,8 @@ class RewardCalculator:
         self.safe_dist = safe_dist
         self._extended_eval = extended_eval
         self.crate = 0
-        self.steps = 1
+        self.steps = 0
+        self.max_steps = max_steps
 
         self.kdtree = None
 
@@ -64,7 +66,7 @@ class RewardCalculator:
         self.kdtree = None
         self._curr_dist_to_path = None
         self.crate = 0
-        self.steps = 1
+        self.steps = 0
 
     def _reset(self):
         """
@@ -95,7 +97,7 @@ class RewardCalculator:
         if len(goals_in_robot_frame) == 0:
             self.cal_func(self, laser_scan, goal_in_robot_frame, *args, **kwargs)
         else:
-            self.cal_func(self, laser_scan, goal_in_robot_frame, goals_in_robot_frame, package, ids, *args, **kwargs)
+            self.cal_func(self, laser_scan, goal_in_robot_frame, goals_in_robot_frame = goals_in_robot_frame, package = package, idx = ids, *args, **kwargs)
         return self.curr_reward, self.info
 
     def _cal_reward_rule_00(
@@ -191,7 +193,7 @@ class RewardCalculator:
             self._reward_reverse_drive(kwargs["action"])
         else:
             self.last_dist_to_path = None
-        self._reward_goal_reached(goal_in_robot_frame, reward=15)
+        self._reward_goal_reached(goal_in_robot_frame, reward=25)
         self._reward_safe_dist(laser_scan, punishment=0.25)
         self._reward_collision(laser_scan, punishment=10)
         self._reward_goal_approached(
@@ -258,9 +260,9 @@ class RewardCalculator:
         self,
         laser_scan: np.ndarray,
         goal_in_robot_frame: Tuple[float, float],
-        goals_in_robot_frame: np.ndarray,
-        package: bool,
-        ids: np.ndarray,
+        goals_in_robot_frame: np.ndarray = np.array([]),
+        ids: np.ndarray = np.array([]),
+        package: bool = True,
         *args,
         **kwargs
     ):
@@ -269,20 +271,14 @@ class RewardCalculator:
         #     kwargs["global_plan"], kwargs["robot_pose"]
         # )
         if laser_scan.min() > self.safe_dist:
-            self._reward_distance_global_plan(
-                reward_factor=0.2,
-                penalty_factor=0.3,
-            )
-            self._reward_abrupt_vel_change(vel_idx=0, factor=0.2)
-            self._reward_abrupt_vel_change(vel_idx=-1, factor=0.05)
+            self._reward_abrupt_vel_change(vel_idx=0, factor=0.3)
+            self._reward_abrupt_vel_change(vel_idx=-1, factor=0.1)
             if self.holonomic:
-                self._reward_abrupt_vel_change(vel_idx=1, factor=0.05)
+                self._reward_abrupt_vel_change(vel_idx=1, factor=0.1)
             self._reward_reverse_drive(self._curr_action, 0.0001)
-        else:
-            self.last_dist_to_path = None
-        if package:
-            self._reward_goal_approached(goal_in_robot_frame, reward_factor=2.2, penalty_factor=2.5, decrease=True)
-            self._reward_goal_reached(goal_in_robot_frame, reward=50.0)
+        if package or goal_in_robot_frame[0] != 0:
+            self._reward_goal_approached(goal_in_robot_frame, reward_factor=0.4, penalty_factor=0.55)
+            self._reward_goal_reached(goal_in_robot_frame, reward=40.0)
         else:
             self._reward_distance_to_goals(goals_in_robot_frame)
             for i, goal in enumerate(goals_in_robot_frame):
@@ -294,8 +290,9 @@ class RewardCalculator:
                         self.info["is_done"] = False
                         break
         self.info["crate"] = self.crate
-        self._reward_safe_dist(laser_scan, punishment=0.25)
-        self._reward_collision(laser_scan, punishment=10)
+        self._reward_safe_dist(laser_scan, punishment=0.05)
+        self._reward_distance_traveled(mode = 1, penalty = 0.2)
+        self._reward_collision(laser_scan, punishment=10.0)
         
         self.last_action = self._curr_action
     def _cal_reward_rule_barn(
@@ -352,23 +349,24 @@ class RewardCalculator:
             self.info["is_done"] = True
             self.info["done_reason"] = 2
             self.info["is_success"] = 1
+            self.steps = 0
         else:
             self.info["is_done"] = False
+        
     def _reward_distance_to_goals(self,
-        goals_in_robot_frame=np.ndarray,
+        goals_in_robot_frame: np.ndarray,
         reward_factor: float = 0.6,
         distance_factor: float = 0.3,):
         
         for dist in goals_in_robot_frame[:,0]:
             self.curr_reward += reward_factor*np.exp(-(dist-self.goal_radius)*distance_factor)/self.steps
-        self.steps = min(self.steps + 0.1, 10)
+        self.steps += 0.12
         #print(self.curr_reward)
     def _reward_goal_approached(
         self,
         goal_in_robot_frame=Tuple[float, float],
         reward_factor: float = 0.3,
-        penalty_factor: float = 0.5,
-        decrease = False
+        penalty_factor: float = 0.5
     ):
         """
         Reward for approaching the goal.
@@ -389,10 +387,10 @@ class RewardCalculator:
             reward = w * (self.last_goal_dist - goal_in_robot_frame[0])
             reward2 = reward_factor*np.exp(-(goal_in_robot_frame[0]-self.goal_radius)*0.2)
             # print("reward_goal_approached:  {}".format(reward))
-            if decrease:
-                reward2 = reward2/self.steps
-                self.steps = min(self.steps + 0.05, 10)
+            reward2 = reward2/(1+self.steps)
+            reward2 = 0
             self.curr_reward += (reward + reward2)
+            self.steps += 0.1
             #print(self.curr_reward)
         self.last_goal_dist = goal_in_robot_frame[0]
 
@@ -403,8 +401,12 @@ class RewardCalculator:
         :param laser_scan (np.ndarray): laser scan data
         :param punishment (float, optional): punishment for collision. defaults to 10
         """
-        if laser_scan.min() <= self.robot_radius:
+        if laser_scan.min() <= self.robot_radius and self.steps > 0.5:
+            punish = 0
+            for i in range(int(self.steps/0.1), self.max_steps):
+                punish += min(i*0.1/100, 0.2)
             self.curr_reward -= punishment
+            self.curr_reward -= punish
 
             if not self._extended_eval:
                 self.info["is_done"] = True
@@ -442,6 +444,8 @@ class RewardCalculator:
         action: np.array = None,
         punishment: float = 0.01,
         consumption_factor: float = 0.005,
+        mode = 0,
+        penalty = 1
     ):
         """
         Reward for driving a certain distance. Supposed to represent "fuel consumption".
@@ -450,13 +454,17 @@ class RewardCalculator:
         :param punishment (float, optional): punishment when action can't be retrieved. defaults to 0.01
         :param consumption_factor (float, optional): weighted velocity punishment. defaults to 0.01
         """
-        if action is None:
-            self.curr_reward -= punishment
+        if mode == 1:
+            self.curr_reward -= min(self.steps/100, penalty)
         else:
-            lin_vel = action[0]
-            ang_vel = action[-1]
-            reward = (lin_vel + (ang_vel * 0.001)) * consumption_factor
-        self.curr_reward -= reward
+            if action is None:
+                self.curr_reward -= punishment
+            else:
+                lin_vel = action[0]
+                ang_vel = action[-1]
+                reward = (lin_vel + (ang_vel * 0.001)) * consumption_factor
+        
+            self.curr_reward -= reward
 
     def _reward_distance_global_plan(
         self,

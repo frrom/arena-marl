@@ -95,4 +95,6 @@ def vec_env_create(
     num_cpus = min(num_cpus, num_vec_envs)
     rospy.init_node("train_env", disable_signals=False, anonymous=True)
     vec_env = ConcatVecEnv(env_list_fns, observation_space, action_space)
-    return sb3vw.SB3VecEnvWrapper(vec_env)
+    fin_env = sb3vw.SB3VecEnvWrapper(vec_env)
+    obs = fin_env.reset()    
+    return fin_env, observation_space

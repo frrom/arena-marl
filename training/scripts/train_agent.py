@@ -26,8 +26,10 @@ def main(args):
         wandb_logger = None
 
     # set debug_mode
-    rospy.set_param("observable_task_goals", 5)
-    rospy.set_param("choose_goal", "true")
+    # rospy.set_param("observable_task_goals", 5)
+    rospy.set_param("n_moves", config["max_num_moves_per_eps"])
+    rospy.set_param("num_ports", 0)
+    rospy.set_param("choose_goal", True)
     rospy.set_param("debug_mode", config["debug_mode"])
 
     ### create dict for all robot types
@@ -54,6 +56,7 @@ def main(args):
             total_timesteps=n_timesteps,
             callback=callback,
             log_interval=config["log_interval"],
+            reset_num_timesteps = False
         )
     except KeyboardInterrupt:
         print("KeyboardInterrupt..")
