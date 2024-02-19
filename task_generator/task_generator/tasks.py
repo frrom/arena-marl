@@ -8,6 +8,7 @@ import rospkg
 import rospy
 import yaml
 import warnings
+import subprocess
 
 from abc import ABC, abstractmethod
 from enum import Enum, unique
@@ -17,7 +18,7 @@ from filelock import FileLock
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.srv import GetMap, SetMap
 from std_msgs.msg import Bool, Int8
-from geometry_msgs.msg import Pose2D
+from geometry_msgs.msg import Pose2D, PoseStamped
 import rospy
 from std_srvs.srv import Empty
 
@@ -317,7 +318,7 @@ class StagedMARLRandomTask(RandomMARLTask):
     def _remove_obstacles(self):
         self.obstacles_manager.remove_obstacles()
 
-from case_task_generator.scripts.task_gen1 import CaseTaskManager as ctm
+from ..case_task_generator.scripts.task_gen1 import CaseTaskManager as ctm
 from task_generator.msg import robot_goal, crate_action, robot_goal_list
 import numpy as np
 
@@ -337,6 +338,7 @@ class CasesMARLTask(ABSMARLTask):
     ):
         self.ns = ns
         map_path = rospy.get_param("/world_path") if map_path == None else map_path
+        self.env = map_path.split('/')[-2]
         self.map_path = '/'.join(map_path.split('/')[:-1])
         self.max_dist = 1.2
         print(map_path)
@@ -360,8 +362,9 @@ class CasesMARLTask(ABSMARLTask):
         self.extended_setup = rospy.get_param("choose_goal", default = True)
         self.ns_prefix = f"/{ns}/" if ns else ""
         self._curr_stage = start_stage
-        self._curr_stage = 4
+        self._curr_stage = rospy.get_param("/curr_stage", default=6)
         self._stages = {}
+        self.shelves = [[4+i*0.5,j+0.5] for j in range(3,8) for i in range(-1,2,2)]
 
         training_path  = rospkg.RosPack().get_path("training")
         self.curriculum_file = os.path.join(
@@ -392,18 +395,21 @@ class CasesMARLTask(ABSMARLTask):
         )
 
         self._initiate_stage()
-        path = '/'.join(self.map_path.split('/')[:-1]) + self._stages[6]["map"]
-        #self.reinit_map(f"{path}/map.yaml")
-        with open(f"{path}/map.yaml", "r") as stream:
-            try:
-                self.configs = yaml.safe_load(stream)
-            except yaml.YAMLError as exc:
-                print(exc)
+        # path = '/'.join(self.map_path.split('/')[:-1]) + self._stages[6]["map"]
+        # #self.reinit_map(f"{path}/map.yaml")
+        # with open(f"{path}/map.yaml", "r") as stream:
+        #     try:
+        #         self.configs = yaml.safe_load(stream)
+        #     except yaml.YAMLError as exc:
+        #         print(exc)
         self.obs_goals = int(rospy.get_param("/observable_task_goals"))
-        self.ctm = ctm(f'{path}/grid.npy', num_active_tasks=self.obs_goals)
+        if "gridworld" in self.env:
+            self.ctm = ctm(f'{self.map_path}/grid.npy', num_active_tasks=self.obs_goals)
+        else:
+            rospy.set_param("crossroad", True)
 
     def next_stage(self, *args, **kwargs):
-        if self._curr_stage < len(self._stages):
+        if self._curr_stage < len(self._stages) and self._curr_stage != 6:
             self._curr_stage = self._curr_stage + 1
             self._initiate_stage()
 
@@ -424,9 +430,9 @@ class CasesMARLTask(ABSMARLTask):
         
         if self._curr_stage > 1:
             rospy.set_param("/last_stage_reached", False)
-
-            self._curr_stage = self._curr_stage - 1
-            self.max_dist = min(self._curr_stage*3 , 8.0)
+            if self._curr_stage < 8:
+                self._curr_stage = self._curr_stage - 1
+            #self.max_dist = min(self._curr_stage*3 , 8.0)
             self._initiate_stage()
 
             if self.ns == "eval_sim":
@@ -439,47 +445,23 @@ class CasesMARLTask(ABSMARLTask):
             )
 
     def _initiate_stage(self):
-        stage_idx = 0
-        
-        if self._curr_stage < 7:
-            self.max_dist = min(self._curr_stage*2, 8.0)
-            if self._curr_stage == 4:
-                self.max_dist = 4.5
-            if self.obstacles_manager is None:
-                print("no obstacle manager")
-                return
-            self._remove_obstacles()
-            self.extended_setup = False
-            self.goal_publisher = []
-            if len(self.goal_publisher) == 0:
-                for _, robot_managers in self.robot_manager.items():
-                    for manager in robot_managers:
-                        self.goal_publisher.append(rospy.Publisher(f"{self.ns_prefix}{manager.robot_id}open_tasks", robot_goal_list))
-                print("initiated publishers")
-            # stage == 3 heuristic goal distribution
-
-            if self._curr_stage > 5:
-                stage_idx = 1 #choose a closely generated goal
-
-        else:
-            if self.obstacles_manager is None:
-                return
-            if rospy.get_param("choose_goal", default = True):
-                self.extended_setup = True
-            path = '/'.join(self.map_path.split('/')[:-1]) + self._stages[self._curr_stage]["map"]
-            #self.reinit_map(f"{path}/map.yaml")
-            with open(f"{path}/map.yaml", "r") as stream:
-                try:
-                    self.configs = yaml.safe_load(stream)
-                except yaml.YAMLError as exc:
-                    print(exc)
-            if self.obstacles_manager is not None:
-                self._remove_obstacles()
-            
-            stage_idx = 2
-        self.stage_publisher.publish(stage_idx)
-        rospy.set_param("/communication", stage_idx)
-        rospy.set_param("/task_distribution", stage_idx)
+        self.max_dist = self._curr_stage*2
+        if 2 < self._curr_stage < 6:
+            self.max_dist = 2.3 if self._curr_stage != 5 else 4
+        if self.obstacles_manager is None:
+            print("no obstacle manager")
+            return
+        self._remove_obstacles()
+        self.extended_setup = False if self._curr_stage < 6 else True
+        self.goal_publisher = []
+        if len(self.goal_publisher) == 0:
+            for _, robot_managers in self.robot_manager.items():
+                for manager in robot_managers:
+                    self.goal_publisher.append(rospy.Publisher(f"{self.ns_prefix}{manager.robot_id}/open_tasks", robot_goal_list, queue_size=1))
+                    #print(f"{self.ns_prefix}{manager.robot_id}/open_tasks")
+            print("initiated publishers")
+        self.stage_publisher.publish(self._curr_stage)
+        rospy.set_param("/curr_stage", self._curr_stage)
 
 
     def _read_stages_from_yaml(self):
@@ -501,6 +483,14 @@ class CasesMARLTask(ABSMARLTask):
 
     def subscriber_goal_status(self, msg: robot_goal):
         action = msg.crate_action.action
+        if msg.robot_type == "refresh":
+            print("refreshing goal publisher ", self.ns_prefix)
+            if self._curr_stage < 7:
+                self.publish_close_goals()
+                return
+            
+            self.publisher_task_status(gen = False)
+            return
         robots = self.robot_manager[msg.robot_type]
         robots: List[RobotManager] = robots
         for robot in robots:
@@ -511,6 +501,11 @@ class CasesMARLTask(ABSMARLTask):
             raise ValueError(f'Robot: type: {msg.robot_type} id: "{msg.robot_id}" is not recognized.')
 
         if action == crate_action.PICKUP:
+            if 3 < self._curr_stage < 6:
+                new_goal = robot.get_random_pos(msg.robot_goal, 2.5)
+                #new_goal = self._generate_goal(msg.robot_goal, robot)
+                robot.publish_goal(new_goal.x, new_goal.y, 0)
+                return
             try:
                 ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= False)
                 crate = self.ctm.pickup_crate(msg.robot_goal, robot) # crate at msg.goal is picked up by robot
@@ -524,15 +519,20 @@ class CasesMARLTask(ABSMARLTask):
                 print("something went wrong")
             
         elif action == crate_action.DROPOFF:
+            robot.publish_goal(0,0,0)
             self.ctm.drop_crate(msg.crate_id)
             self.publisher_task_status()
 
         elif action == crate_action.BLOCK:
-            self.ctm.block_goal(msg.crate_id)
-            self.publisher_task_status(gen = False)
+            robot.publish_goal(msg.robot_goal.x, msg.robot_goal.y, 0)
+            if self._curr_stage > 6:
+                self.ctm.block_goal(msg.crate_id)
+                self.publisher_task_status(gen = False)
 
     def publisher_task_status(self, gen = True):
         ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= gen) # TODO check resolution parameter
+        if len(robot_goals) == 0:
+            return self.publisher_task_status(gen = True)
         self.open_tasks = []
         for id, r_goal, crate_goal in zip(ids, robot_goals, crate_goals):
             task = robot_goal(
@@ -546,16 +546,30 @@ class CasesMARLTask(ABSMARLTask):
         open_tasks_list = robot_goal_list(self.open_tasks)
         self.goal_pos_publisher.publish(open_tasks_list)
         
-    def publish_close_goals(self, starts):
+    def publish_close_goals(self, starts = None,dont_care = False):
         idx = 0
+        if starts is None:
+            starts = [None]*self._num_robots
+            for i in range(self._num_robots):
+                starts[i] = (random.randint(1,7),random.randint(1,10),0)
+        
         if self.obs_goals > 1:
             for _, robot_managers in self.robot_manager.items():
                 for manager in robot_managers:
+                    valid = False
                     open_tasks = []
                     start = Pose2D(starts[idx][0], starts[idx][1], 0)
-                    for i in range(random.randint(2,self.obs_goals)):
-                        r_goal = manager.get_random_pos(start, self.max_dist)
-                        crate_goal = manager.get_random_pos(start, 4*self.max_dist)
+                    num_goals = random.randint(1,self.obs_goals)
+                    for i in range(num_goals):
+                        if random.randint(0, num_goals+1) > i+1:
+                            r_goal = manager.get_random_pos(start, self.max_dist,dont_care=dont_care) if i == num_goals-1 and not valid else Pose2D()
+                        else:
+                            valid = True
+                            if start.x == 3.5 or start.x == 4.5:
+                                _, r_goal, _ = self._generate_goal(start, manager, starts, swap = 0)
+                            else:
+                                r_goal = manager.get_random_pos(start, self.max_dist,dont_care=dont_care)
+                        crate_goal = manager.get_random_pos(start, 4*self.max_dist, dont_care=dont_care)
                         task = robot_goal(
                             crate_action(crate_action.ASSIGN,"pub"),
                             i, self.ns,
@@ -564,7 +578,7 @@ class CasesMARLTask(ABSMARLTask):
                             crate_goal
                             )
                         open_tasks.append(task)
-                    open_tasks_list = robot_goal_list(self.open_tasks)
+                    open_tasks_list = robot_goal_list(open_tasks)
                     try:
                         self.goal_publisher[idx].publish(open_tasks_list)
                     except:
@@ -583,45 +597,181 @@ class CasesMARLTask(ABSMARLTask):
         self.reset_flag = {key: False for key in self.robot_manager.keys()}
 
     def reset(self, robot_type: str):
-        if self._curr_stage < 5 or self._curr_stage == 6:
-            self.reset_single_target(robot_type)
+        self.stage_publisher.publish(self._curr_stage)
+        # if self._curr_stage > 5:
+        #     vertices = np.array([[3,3],[5,3],[3,1],[5,1]])
+        #     self.obstacles_manager.register_static_obstacle_polygon(vertices)
+        #     self.obstacles_manager.update_map()
+        if "gridworld" in self.env:
+            if self._curr_stage < 7: #or self._curr_stage == 7
+                if self._curr_stage < 3:
+                    seed = 1 if random.randint(self._curr_stage,2) == 2 else 0
+                else:# self._curr_stage == 3:
+                    seed = 3 if random.randint(1,3) != 2 else random.randint(1,3)%2+1
+                # else:
+                #     seed = 3 if random.randint(1,3) != 2 else random.randint(1,2)
+                self.reset_single_target(robot_type, seed)
+            else:
+                self.reset_multi_target(robot_type)
+        elif "crossroad" in self.env:
+                self.reset_corssroad(robot_type)
         else:
-            self.reset_multi_target(robot_type)
+            self.reset_single_target(robot_type, seed=0)
 
-    def reset_single_target(self, robot_type: str):
+    def _generate_goal(self, start_pos, manager, starts = [None], goals = [None], swap = 0, max_dist = None):
+        swaped = False
+        forbidden = [None] * 2
+        no_zone = [None] * 3
+        max_dist = max_dist if max_dist else self.max_dist
+        theta = random.uniform(-math.pi, math.pi)
+        x = 6.5 if start_pos.x < 4 else 1.5
+        forbidden[0] = (start_pos.x, start_pos.y, self._curr_stage*0.3)
+        no_zone[0] = (x,5.5,6.5-self._curr_stage,14.7-2*self._curr_stage)
+        if self._curr_stage > 4:
+            #no_zone[0] = (x, start_pos.y, 3, 8-self._curr_stage)
+            if random.randint(1,4) == 5:
+                no_zone[1] = (abs(x-8),5.5,self._curr_stage-2.5,3+5*(self._curr_stage-4))
+            else:
+                no_zone[1] = (abs(x-8), start_pos.y, 3, 0.15*self._curr_stage)
+        else:
+            #no_zone[0] = (x,5.5,5-self._curr_stage/2,6)
+            no_zone[1] = (abs(x-8), start_pos.y, 3, 0.15*self._curr_stage)
+        if self._curr_stage == 6:
+            no_zone = [None] * 3
+        if random.randint(1,5) < swap:
+            goal_pos = start_pos
+            start_pos = manager.get_random_pos(start_pos, max_dist, forbidden_zones=starts+forbidden, no_zones=no_zone)
+            swaped = True
+        else:
+            if self._curr_stage == 3:
+                theta = random.uniform(-math.pi/4, math.pi/4) if start_pos.x > 4 else random.choice([-1,1])*(math.pi - random.uniform(0, math.pi/4))
+            else:
+                if random.randint(1,2)==2:
+                    theta = random.uniform(-math.pi/4, math.pi/4) if start_pos.x > 4 else random.choice([-1,1])*(math.pi - random.uniform(0, math.pi/4))
+                else:
+                    theta = random.uniform(-math.pi/4, math.pi/4) if start_pos.x < 4 else random.choice([-1,1])*(math.pi - random.uniform(0, math.pi/4))
+            goal_pos = manager.get_random_pos(start_pos, min(3.5,max_dist), forbidden_zones=forbidden+goals, no_zones=no_zone)
+        start_pos.theta = theta
+        return start_pos, goal_pos, swaped
+    
+    
+    def generate_combinations(tuples):
+        combinations = []
+        for i in range(len(tuples)):
+            for j in range(len(tuples)):
+                if i != j:
+                    combinations.append((tuples[i][0], tuples[j][0]))
+                    combinations.append((tuples[i][0], tuples[j][1]))
+                    combinations.append((tuples[i][1], tuples[j][1]))
+                    combinations.append((tuples[i][1], tuples[j][0]))
+        return combinations
+    def reset_corssroad(self, robot_type: str):
         assert robot_type in self.robot_manager, f"Unknown robot type: {robot_type},"
         f" robot has to be one of the following types: {self.robot_manager.keys()}"
-
+        c = self.configs["corridors"] 
+        ver = c // 2 + 1
+        hor = c//2 + c%2 + 1
         self.reset_flag[robot_type] = True
+        swaped = True
+        all_combinations = None
         if not all(self.reset_flag.values()):
             return
-
+        
+        pos = [None]*c
+        done = False
         with self._map_lock:
-            max_fail_times = 5
+            max_fail_times = 10
             fail_times = 0
-            if self._curr_stage == 4:
-                self.ctm.generate_scenareo(nr_tasks=self._num_robots, type= 'random')
-                _, _robot_goals, _crate_goals = self.ctm.get_open_tasks(resolution= 1)
             while fail_times < max_fail_times:
                 try:
                     starts, goals = [None] * self._num_robots, [None] * self._num_robots
+                    starts_h, goals_h = [None]*self._num_robots, [None]*self._num_robots
                     robot_idx = 0
                     for _, robot_managers in self.robot_manager.items():
                         for manager in robot_managers:
-                            if self._curr_stage == 4:
-                                try:
-                                    start_pos = _robot_goals[robot_idx]
-                                    #start_pos.theta = random.uniform(-math.pi, math.pi)
-                                except:
-                                    start_pos = manager.get_random_pos(start_pos, self.max_dist, forbidden_zones=starts)
-                                goal_pos = manager.get_random_pos(start_pos, self.max_dist, forbidden_zones=starts+goals)
-                                manager.move_robot(start_pos)
+                            map_ = manager.map 
+                            x, y = map_.info.origin.position.x, map_.info.origin.position.y
+                            for i in range(ver-1):
+                                pos[i] = ((int(x + (i+1)/ver*map_.info.width), y+100), 
+                                (int(x + (i+1)/ver*map_.info.width), y + map_.info.height-100))
+                            for i in range(hor-1):
+                                pos[i+ver-1] = ((x + 100, int(y + (i+1)/hor*map_.info.height )),
+                            (x + map_.info.width - 100, int(y +  (i+1)/hor*map_.info.height)))
+                            break
+                        if self._curr_stage > 3 and not all_combinations:
+                            all_combinations = []
+                            for i in range(len(pos)):
+                                for j in range(len(pos)):
+                                    if i != j:
+                                        all_combinations.append((pos[i][0], pos[j][0]))
+                                        all_combinations.append((pos[i][0], pos[j][1]))
+                                        all_combinations.append((pos[i][1], pos[j][1]))
+                                        all_combinations.append((pos[i][1], pos[j][0]))
+                                    else:
+                                        all_combinations.append(pos[i])
+                                        all_combinations.append((pos[i][1], pos[i][0]))
+                        for manager in robot_managers:
+                            t = 0
+                            if self._curr_stage < 4:
+                                while t < 30:
+                                    i = random.randint(0, c-1)
+                                    start, end = pos[i]
+                                    if start in starts_h:
+                                        if end not in starts_h:
+                                            h = start
+                                            start = end
+                                            end = h
+                                            break
+                                        t += 1
+                                    else:
+                                        break
+                            else:
+                                if not all_combinations:
+                                    raise rospy.ServiceException
+                                start, end = random.choice(all_combinations)
+                                all_combinations.remove((start,end)) 
+                                #print("new")
+                                combinations = all_combinations.copy()
+                                for combs in combinations:
+                                    if start == combs[0] or end == combs[1]:
+                                        # print("match")
+                                        # print(start,end,combs)
+                                        all_combinations.remove(combs) 
+                            x_in_cells, y_in_cells = start
+                            y_in_meters = y_in_cells * map_.info.resolution + map_.info.origin.position.y
+                            x_in_meters = x_in_cells * map_.info.resolution + map_.info.origin.position.x
+                            start_pos, goal_pos = Pose2D(), Pose2D()
+                            start_pos.x, start_pos.y = x_in_meters, y_in_meters
+                            if start_pos.x < 2:
+                                start_pos.theta = 0
+                                goal_pos.x, goal_pos.y = start_pos.x + map_.info.width*map_.info.resolution*0.2 + map_.info.origin.position.x, start_pos.y + random.choice([-0.5, 0.5])
+                            elif start_pos.y < 2:
+                                goal_pos.x, goal_pos.y = start_pos.x + random.choice([-0.5, 0.5]), start_pos.y + map_.info.width*map_.info.resolution*0.2 + map_.info.origin.position.y
+                                start_pos.theta = math.pi/2
+                            elif start_pos.y > 2 and start_pos.x < map_.info.width*map_.info.resolution + map_.info.origin.position.x - 2:
+                                goal_pos.x, goal_pos.y = start_pos.x + random.choice([-0.5, 0.5]), start_pos.y - map_.info.width*map_.info.resolution*0.2 + map_.info.origin.position.y
+                                start_pos.theta = -math.pi/2
+                            else:
+                                start_pos.theta = math.pi
+                                goal_pos.x, goal_pos.y = start_pos.x - map_.info.width*map_.info.resolution*0.2 + map_.info.origin.position.x, start_pos.y + random.choice([-0.5, 0.5])
+                            x_in_cells, y_in_cells = end
+                            y_in_meters = y_in_cells * map_.info.resolution + map_.info.origin.position.y
+                            x_in_meters = x_in_cells * map_.info.resolution + map_.info.origin.position.x
+                            if done:
+                                start_pos.theta = random.uniform(-math.pi, math.pi)
+                            else:
+                                goal_pos.x, goal_pos.y = x_in_meters, y_in_meters
+                                if (starts_h[1] is not None and 1 < self._curr_stage < 5) or (starts_h[0] is not None and self._curr_stage == 1):
+                                    done = True
+
+                            manager.move_robot(start_pos)
+                            if swaped:
                                 manager.publish_goal(goal_pos.x, goal_pos.y, goal_pos.theta)
                             else:
-                                start_pos, goal_pos = manager.set_start_pos_goal_pos(
-                                    forbidden_zones=starts+goals, max_dist = self.max_dist
-                                )
-                            #print(goal_pos)
+                                manager.publish_goal(0,0,0)
+                            
+                            starts_h[robot_idx] = start
+                            goals_h[robot_idx] = end
                             starts[robot_idx] = (
                                 start_pos.x,
                                 start_pos.y,
@@ -630,7 +780,126 @@ class CasesMARLTask(ABSMARLTask):
                             goals[robot_idx] = (
                                 goal_pos.x,
                                 goal_pos.y,
-                                manager.ROBOT_RADIUS * 3.25,
+                                manager.ROBOT_RADIUS * 4.0,
+                            )
+                            robot_idx += 1
+                    self.obstacles_manager.reset_pos_obstacles_random(
+                        forbidden_zones=starts + goals
+                    )
+                    break
+                except rospy.ServiceException or IndexError as e:
+                    rospy.logwarn(repr(e))
+                    fail_times += 1
+            if fail_times == max_fail_times:
+                raise Exception("reset error!")
+        self.publish_close_goals(starts,dont_care = True)
+
+        self.reset_flag = dict.fromkeys(self.reset_flag, False)
+        #self.publish_close_goals(starts)
+    def reset_single_target(self, robot_type: str, seed = 0):
+        self.simple = True
+        choices = self.shelves.copy()
+        choices1 = choices[2:-2]
+        choices2 = choices[:2] + choices[-2:]
+        assert robot_type in self.robot_manager, f"Unknown robot type: {robot_type},"
+        f" robot has to be one of the following types: {self.robot_manager.keys()}"
+        swaped = False
+        swap = 3
+        self.reset_flag[robot_type] = True
+        if not all(self.reset_flag.values()):
+            return
+        if "gridworld" in self.env:
+            self.ctm.generate_scenareo(nr_tasks=self._num_robots, type= 'random')
+            _, _robot_goals, _crate_goals = self.ctm.get_open_tasks(resolution= 1)
+        with self._map_lock:
+            max_fail_times = 5
+            fail_times = 0
+            while fail_times < max_fail_times:
+                try:
+                    starts, goals = [None] * self._num_robots, [None] * self._num_robots
+                    robot_idx = 0
+                    for _, robot_managers in self.robot_manager.items():
+                        for manager in robot_managers:
+                            rospy.set_param("resolution", manager.map.info.resolution)
+                            offx= manager.map.info.origin.position.x
+                            offy = manager.map.info.origin.position.y
+                            rospy.set_param("offx", offx)
+                            rospy.set_param("offy", offy)
+                            forbidden = [None] * 2
+                            if self._curr_stage > 5 and seed != 0 and "gridworld" in self.env:
+                                start_pos = Pose2D()
+                                (start_pos.x, start_pos.y, start_pos.theta,) = get_random_pos_on_map(
+                                    manager._free_space_indices,
+                                    manager.map,
+                                    manager.ROBOT_RADIUS * 2,
+                                    forbidden_zones = starts #+ crate_goals,
+                                )
+                                goal_pos = _robot_goals[robot_idx]
+                            elif seed == 3:
+                                try:
+                                    swaped = (swap != 6 and swaped)
+                                    swap = 4 #if self._curr_stage < 5 else 5
+                                    easy = (random.randint(1,4) == 2 and self._curr_stage !=3)
+                                    start = random.choice(choices1) if easy else random.choice(choices2)
+                                    if easy:
+                                        choices1.remove(start)
+                                    else:
+                                        choices2.remove(start)
+                                    start_pos = Pose2D()
+                                    start_pos.x, start_pos.y = start[0], start[1]
+                                    # if 3 < self._curr_stage < 6 and swaped and random.randint(1,2) == 2:
+                                    #     start_pos.x, start_pos.y = goals[robot_idx-1][0], goals[robot_idx-1][1]
+                                    #     swap = 6
+                                    start_pos, goal_pos, swaped = self._generate_goal(start_pos, manager, starts, goals, swap)
+                                    #manager.publish_goal(goal_pos.x, goal_pos.y, goal_pos.theta)
+                                except:
+                                    print("something went wrong")
+                                    start_pos, goal_pos = manager.set_start_pos_goal_pos(
+                                            forbidden_zones=starts+goals, max_dist = 1.5*self.max_dist
+                                           )
+                            elif seed == 1:
+                                forbidden[0] = (4, 4, 4, 4.3)
+                                start_pos = manager.get_random_pos(start_pos = None, max_dist=None, forbidden_zones=starts, no_zones=forbidden)
+                                goal_pos = manager.get_random_pos(start_pos, max_dist=self._curr_stage*2, forbidden_zones=[(start_pos.x,start_pos.y,min(self._curr_stage*0.6,2.5))]+goals, no_zones = forbidden)
+                                swaped = False
+                            elif seed == 0:
+                                start_pos = manager.get_random_pos(start_pos = None, max_dist=None, forbidden_zones=starts)
+                                goal_pos = manager.get_random_pos(start_pos, max_dist=self._curr_stage*2, forbidden_zones=[(start_pos.x,start_pos.y,min(self._curr_stage-1, 5))]+goals)
+                                # if "crossroad" not in self.env and "gridworld" not in self.env:
+                                #     goal_pos = Pose2D()
+                                #     c_map = Pose2D()
+                                #     map_ = manager.map
+                                #     c_map.x = map_.info.width/2* map_.info.resolution + map_.info.origin.position.y
+                                #     c_map.y = map_.info.height/2* map_.info.resolution + map_.info.origin.position.y
+                                #     goal_pos.x = c_map.x + c_map.x - start_pos.x
+                                #     goal_pos.y = c_map.y + c_map.y - start_pos.y
+                                
+                            elif seed == 2:
+                                forbidden[0] = (2.5, 5, 2.5, 6)
+                                start_pos = manager.get_random_pos(start_pos = None, max_dist=None, forbidden_zones=starts, no_zones=forbidden)
+                                goal_pos = manager.get_random_pos(start_pos, max_dist=self._curr_stage+1.5, forbidden_zones=[(start_pos.x,start_pos.y,min(self._curr_stage-1.5, 5))]+goals, no_zones = forbidden)
+                                # start_pos, goal_pos = manager.set_start_pos_goal_pos(
+                                #     forbidden_zones=starts+goals, max_dist = self.max_dist
+                                #     )
+                            try:
+                                manager.move_robot(start_pos)
+                            except:
+                                print("reset error")
+                                raise Exception("reset error!")
+                            if swaped or self.simple:
+                                manager.publish_goal(goal_pos.x, goal_pos.y, goal_pos.theta)
+                            else:
+                                manager.publish_goal(0,0,0)
+                            
+                            starts[robot_idx] = (
+                                start_pos.x,
+                                start_pos.y,
+                                manager.ROBOT_RADIUS * 2.25,
+                            )
+                            goals[robot_idx] = (
+                                goal_pos.x,
+                                goal_pos.y,
+                                manager.ROBOT_RADIUS * 4.0,
                             )
                             robot_idx += 1
                     self.obstacles_manager.reset_pos_obstacles_random(
@@ -654,8 +923,11 @@ class CasesMARLTask(ABSMARLTask):
         self.reset_flag[robot_type] = True
         if not all(self.reset_flag.values()):
             return
-
-        self.ctm.generate_scenareo(nr_tasks=self._num_robots, type= 'random')
+        if self._curr_stage > 7:
+            num = random.randint(self._num_robots-1,5)
+        else:
+            num = rospy.get_param("observable_task_goals", default = 5)
+        self.ctm.generate_scenareo(nr_tasks=num, type= 'random')
         _, _robot_goals, _crate_goals = self.ctm.get_open_tasks(resolution= 1) # TODO check resolution parameter
         robot_goals_iter, crate_goals_iter = iter(_robot_goals), iter(_crate_goals)
         
@@ -669,13 +941,6 @@ class CasesMARLTask(ABSMARLTask):
                 for robot_type, robot_managers in self.robot_manager.items():
                     for manager in robot_managers:
                         rad = manager.ROBOT_RADIUS if rad < manager.ROBOT_RADIUS else rad
-                for goal in _robot_goals:
-                    goals[goal_idx] = (
-                            goal.x,
-                            goal.y,
-                            rad * 3.25,
-                        )
-                    goal_idx += 1
                 try:
                     robot_idx = 0
                     for robot_type, robot_managers in self.robot_manager.items():
@@ -686,25 +951,23 @@ class CasesMARLTask(ABSMARLTask):
                                 manager._free_space_indices,
                                 manager.map,
                                 manager.ROBOT_RADIUS * 2,
-                                forbidden_zones= goals #+ crate_goals,
+                                forbidden_zones = starts #+ crate_goals,
                             )
                             manager.move_robot(start)
+                            manager.publish_goal(0,0,0)
                             starts[robot_idx] = (
                                 start.x,
                                 start.y,
                                 manager.ROBOT_RADIUS * 2.25,
                             )
                             robot_idx += 1
-                    self.obstacles_manager.reset_pos_obstacles_random(
-                        forbidden_zones=starts + goals# + crate_goals 
-                    )
                     break
                 except:
                     print("failed to reset: " +str(fail_times))
                     fail_times += 1
             if fail_times == max_fail_times:
                 raise Exception("reset error!")
-        if self._curr_stage == 5 or not self.extended_setup:
+        if self.simple or self._curr_stage == 9 or not self.extended_setup:
             chosen_goals = self.find_best_matches(starts, _robot_goals)
             idx = 0
             for _, robot_managers in self.robot_manager.items():

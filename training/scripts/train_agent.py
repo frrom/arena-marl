@@ -26,11 +26,16 @@ def main(args):
         wandb_logger = None
 
     # set debug_mode
-    # rospy.set_param("observable_task_goals", 5)
-    rospy.set_param("n_moves", config["max_num_moves_per_eps"])
-    rospy.set_param("num_ports", 0)
+    rospy.set_param("/curr_stage", 6)
+    rospy.set_param("plot_trjectories", False)
+    rospy.set_param("n_moves", config["max_num_moves_per_eps"]/4)
+    rospy.set_param("num_ports", 2)
     rospy.set_param("choose_goal", True)
     rospy.set_param("debug_mode", config["debug_mode"])
+    rospy.set_param("observable_task_goals", 5)
+    rospy.set_param("window_length", 2)
+    rospy.set_param("slinding_window", True)
+    #rospy.set_param("crossroad", False)
 
     ### create dict for all robot types
     # those contain all necessary parameters, and instances of the respective models and envs

@@ -12,16 +12,64 @@ from pettingzoo import *
 from pettingzoo.utils.conversions import from_parallel, to_parallel
 from rl_utils.rl_utils.training_agent_wrapper import TrainingDRLAgent
 from rl_utils.rl_utils.utils.supersuit_utils import MarkovVectorEnv_patched
-from task_generator.tasks import get_MARL_task
-from geometry_msgs.msg import Pose2D, PoseStamped, PoseWithCovarianceStamped
+from task_generator.task_generator.tasks import get_MARL_task
+from geometry_msgs.msg import Pose2D, PoseStamped, PoseWithCovarianceStamped, Quaternion
 from std_msgs.msg import Int8
 from ..utils.communication_channel import Channel
+import math
+import random
+import time
 
 # from marl_agent.utils.supersuit_utils import *
 # from rl_agent.utils.supersuit_utils import MarkovVectorEnv_patched
 import supersuit as ss
 from task_generator.msg import robot_goal, crate_action, robot_goal_list
 
+def polar_to_cartesian(r, theta):
+    x = r * math.cos(theta)
+    y = r * math.sin(theta)
+    return x, y
+
+def calculate_velocity(pos1, pos2, delta_t):
+    # Convert polar coordinates to Cartesian coordinates
+    if pos1 is None or pos2 is None:
+        return 0
+    x1, y1 = polar_to_cartesian(pos1[0], pos1[1])
+    x2, y2 = polar_to_cartesian(pos2[0], pos2[1])
+    
+    # Calculate displacement vector
+    dx = x2 - x1
+    dy = y2 - y1
+    
+    # Calculate average velocity
+    vx = dx / delta_t
+    vy = dy / delta_t
+    v = math.sqrt(vx**2 + vy**2)
+    return v
+
+def polar_displacement(pos1, pos2, delta_t):
+    delta_r = math.sqrt(pos1[0]**2 + pos2[0]**2 - 2*pos1[0]*pos2[0]*math.cos(pos2[1] - pos1[1]))
+    delta_theta = math.atan2(pos2[0]*math.sin(pos2[1] - pos1[1]), pos1[0] - pos2[0]*math.cos(pos2[1] - pos1[1]))
+    if abs(delta_theta) < np.pi/2:
+        delta_r = -delta_r
+    v_r = delta_r/delta_t
+
+    v_theta = (pos2[1] - pos1[1])/delta_t
+    return v_r, v_theta
+
+def _rotate_positions(positions, theta):
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+    rotation_matrix = np.array([[cos_theta, -sin_theta],
+                                [sin_theta, cos_theta]])
+    
+    new_pos = [None]*len(positions)
+    i = 0
+    for pos in positions:
+        coords = np.array([pos.x, pos.y])
+        new_pos[i] = rotation_matrix.dot(coords)
+        i += 1
+    return new_pos
 
 def env_fn(**kwargs: Dict[str, Any]):  # -> VecEnv:
     """
@@ -97,7 +145,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
             self.comm_channel = Channel(ns, self.agent_object_mapping, self.ports)
 
         self.terminal_observation = {}
-
+        self.show = False
         self._validate_agent_list()
         
         # task manager
@@ -110,7 +158,10 @@ class FlatlandPettingZooEnv(ParallelEnv):
                 self._service_name_step, StepWorld
             )
 
-        self._max_num_moves = max_num_moves_per_eps
+
+        self.stage_info = rospy.get_param("/curr_stage", default = 1)
+        self.max_num_moves = max_num_moves_per_eps
+        self._max_num_moves = int(self.max_num_moves*0.5) if self.stage_info < 6 else int(self.max_num_moves*(self.stage_info-5))
         self.action_provided, self.curr_actions = False, {}
 
         rospy.set_param(
@@ -121,8 +172,16 @@ class FlatlandPettingZooEnv(ParallelEnv):
         )  # "reset_states" or "get_obs"
         print(f'{self._ns}goals')
         self.goal_publisher = rospy.Publisher(f'{self._ns}goals', robot_goal)
-        self.stage_info = 0
+        
         self._stage_info = rospy.Subscriber("stage_info", Int8, self.callback_stage_info)
+        self.obs_end = {}
+        self.msg_size = {}
+        self.goals = {}
+        for agent in self.possible_agents:
+            obs_size = self.agent_object_mapping[agent].obs_size
+            self.msg_size[agent] = self.agent_object_mapping[agent].msg_size
+            self.obs_end[agent] = 3*self.obs_goals+obs_size
+        
 
     def observation_space(self, agent: str) -> spaces.Box:
         """Returns specific agents' observation space.
@@ -175,7 +234,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
         ), "Reset mode has to be either 'reset_states' or 'get_obs'"
 
         if mode == "reset_states":
-            print("reset environment " + self._ns)
+            #print("reset environment " + self._ns)
             self.agents, self.num_moves, self.terminal_observation = (
                 self.possible_agents[:],
                 0,
@@ -184,10 +243,16 @@ class FlatlandPettingZooEnv(ParallelEnv):
             self.dones = {agent: False for agent in self.agents}
             # reset the reward calculator
             for agent in self.agents:
+                if self.stage_info < 7:
+                    self.agent_object_mapping[agent].set_package_boolean(random.randint(0,1)==1)
+                else:
+                    self.agent_object_mapping[agent].set_package_boolean(False)
                 self.agent_object_mapping[agent].reward_calculator.reset()
-                self.agent_object_mapping[agent].set_package_boolean(False)
+                self.agent_object_mapping[agent].reserving = 0
                 self.agent_object_mapping[agent].set_reserved_status(False)
                 self.agent_object_mapping[agent].set_agent_goal([Pose2D()])
+                self.agent_object_mapping[agent].last_pos = None
+                self.agent_object_mapping[agent].sliding_window = np.zeros((self.agent_object_mapping[agent].observation_collector.window_length, self.agent_object_mapping[agent].observation_collector.obs_size-3))
             
             for agent in self.agents:
                 noop = np.zeros(shape=self.action_space(agent).shape)
@@ -383,6 +448,38 @@ class FlatlandPettingZooEnv(ParallelEnv):
             2 * np.pi
         ) - np.pi
         return rho, theta
+    
+    @staticmethod
+    def _get_robot_vel(prev_pos: Pose2D, robot_pos: Pose2D, delta):
+        if prev_pos is None:
+            return 0,0
+        y_relative = robot_pos.y - prev_pos.y
+        x_relative = robot_pos.x - prev_pos.x
+        angle = robot_pos.theta - prev_pos.theta
+        theta_relative = angle - math.trunc(angle/np.pi)*2*np.pi#math.fmod((robot_pos.theta - prev_pos.theta),math.pi)
+        rho = (x_relative**2 + y_relative**2) ** 0.5
+
+        # Define the rotation angle
+        theta = -prev_pos.theta + np.pi/2
+
+        rotated_coords = _rotate_positions([prev_pos, robot_pos], theta)
+        # cos_theta = np.cos(theta)
+        # sin_theta = np.sin(theta)
+        # rotation_matrix = np.array([[cos_theta, -sin_theta],
+        #                             [sin_theta, cos_theta]])
+        
+        # coords2 = np.array([robot_pos.x, robot_pos.y])
+        # coords = np.array([prev_pos.x, prev_pos.y])
+        # rotated_coords_robot = rotation_matrix.dot(coords2)
+        # rotated_coords_prev = rotation_matrix.dot(coords)
+        if rotated_coords[1][1] < rotated_coords[0][1]:
+            rho = -rho
+    
+        v_l = rho/delta
+        v_r = theta_relative/delta
+        
+        return v_l,v_r
+
 
     def get_states(
         self,
@@ -390,72 +487,94 @@ class FlatlandPettingZooEnv(ParallelEnv):
         Dict[str, np.ndarray], Dict[str, float], Dict[str, bool], Dict[str, Any]
     ]:
         assert self.action_provided, "No actions provided"
-        merged_obs, rewards, reward_infos = {}, {}, {}
-        calc_reward = True
+        merged_obs, rewards, reward_infos, messages = {}, {}, {}, {}
+        #calc_reward = True
+        
         reserved_backup = []
         for agent in self.curr_actions:
             # observations
             merged, _dict = self.agent_object_mapping[agent].get_observations()
-            
+            self.goals[agent] = _dict["curr_goal"]
             _dict["package"] = self.agent_object_mapping[agent].get_package_boolean()
             # rewards and infos
-            msg_size = _dict["msg_size"]
-            if self.extended_setup and self.stage_info == 1:
-                calc_reward = False
-                choice = self.curr_actions[agent][2]
-                if int(choice) != 0 and not self.agent_object_mapping[agent].get_reserved_status():
-                    try:
-                        goal = _dict["obs_goals"][int(choice)-1]
-                        crate = _dict["obs_crates"][int(choice)-1]
-                        crate_id = _dict["ids"][int(choice)-1]
-                    except:
-                        #print("wrong goal setting")
-                        goal = Pose2D()
-                    if not(goal.x == 0 and goal.y == 0) and goal not in reserved_backup:
-                        reserved_backup.append(goal)
-                        self.agent_object_mapping[agent].set_agent_goal([goal, crate, crate_id])
-                        self.agent_publisher(crate_action(crate_action.BLOCK,"pub"), idx= crate_id,
-                        r_type=self.agent_object_mapping[agent].robot_model, r_id=self.agent_object_mapping[agent]._ns_robot)
-                        self.agent_object_mapping[agent].set_reserved_status(True)
-                    
+            msg_size = self.msg_size[agent]
+            obs_end = self.obs_end[agent]
+            choice = self.curr_actions[agent][2]#*6/5
+            r=0
+            if self.extended_setup and self.stage_info < 9 and _dict["goal_in_robot_frame"][0] == 0:
+                length = len(_dict["ids"])-1
+                if length == -1:
+                    self.agent_publisher(crate_action(crate_action.PICKUP,"pub"),r_type="refresh")
+                    time.sleep(1)
+                else:
+                    if int(choice) != 0 and not self.agent_object_mapping[agent].get_reserved_status():
+                        try:
+                            #c = int(min(choice-1, length))
+                            c = int(choice - 1)
+                            goal = _dict["obs_goals"][c]
+                            crate = _dict["obs_crates"][c]
+                            crate_id = _dict["ids"][c]
+                        except:
+                            #print("wrong goal setting")
+                            goal = Pose2D()
+                        if goal.x != 0 and goal not in reserved_backup:
+                            reserved_backup.append(goal)
+                            self.agent_object_mapping[agent].set_agent_goal([goal, crate, crate_id])
+                            self.agent_publisher(crate_action(crate_action.BLOCK,"pub"), idx= crate_id,
+                            r_type=self.agent_object_mapping[agent].robot_model, r_id=self.agent_object_mapping[agent]._ns_robot, goal = goal) 
+                            self.agent_object_mapping[agent].set_reserved_status(True)
+                            r = 4*(self._max_num_moves-self.num_moves+1)/self._max_num_moves
+                            print(self.agent_object_mapping[agent]._ns_robot + " reserved crate ", int(choice))
                 if self.agent_object_mapping[agent].get_reserved_status():
                     _dict["goals_in_robot_frame"] = np.array([])
-                    calc_reward = True
-                if  self.agent_object_mapping[agent].get_agent_goal()[0] == Pose2D():
+                if self.agent_object_mapping[agent].get_agent_goal()[0] == Pose2D():
                     rho, theta = 0, 0
-                    calc_reward = False
                 else:
                     rho, theta = FlatlandPettingZooEnv._get_goal_pose_in_robot_frame(self.agent_object_mapping[agent].get_agent_goal()[0], _dict["robot_pose"])
                 _dict["goal_in_robot_frame"] = [rho, theta]
-            if calc_reward:
-                reward, reward_info = self.agent_object_mapping[agent].get_reward(
-                    action=self.curr_actions[agent], obs_dict=_dict
-                )
-            else:
-                reward = -0.4
-                reward_info = {"is_success": 0,
-                                "is_done": False}
-                #print("no reward at this stage")
+            curr_vel, curr_avel = self._get_robot_vel(self.agent_object_mapping[agent].last_pos, _dict["robot_pose"], 0.1)
+            #curr_vel2, curr_avel2 = polar_displacement(self.agent_object_mapping[agent].last_pos, _dict["goal_in_robot_frame"], 0.1)
+            _dict["vel"] = [curr_vel,curr_avel] #apparently, vel == action[0] (shouldnt this be acc?)
+            try:
+                if int(choice) == 0 or len(_dict["obs_goals"]) < int(choice) or _dict["obs_goals"][int(choice-1)].x == 0 :
+                    r -= -0.012
+                    #_dict["goal_in_robot_frame"] = [0,0]
+                    # if choice == 0 or choice == 6:
+                    #     r -= 0.01
+                # else:
+                #     rho, _ = FlatlandPettingZooEnv._get_goal_pose_in_robot_frame(_dict["obs_goals"][int(choice-1)], _dict["robot_pose"])
+                #     rho2, _ = FlatlandPettingZooEnv._get_goal_pose_in_robot_frame(_dict["obs_goals"][int(choice-1)], _dict["obs_crates"][int(choice-1)])
+                #     r -= (0.01 - min(0.01,0.035*self.stage_info/(rho + rho2)))
+            except:
+                #print("no goals published")
+                pass
+            reward, reward_info = self.agent_object_mapping[agent].get_reward(
+                action=self.curr_actions[agent], obs_dict=_dict
+            )
+            reward+=r
             
-            merged[-msg_size-5:-msg_size-3] = _dict["goal_in_robot_frame"]
-            if reward_info["is_success"] == 1 and self.stage_info == 1:
+            merged[obs_end-5:obs_end-3] = _dict["goal_in_robot_frame"]
+            
+            merged[obs_end-6] = curr_vel
+            merged[obs_end-9:obs_end-7] = self.curr_actions[agent][:2] #change that later
+            if reward_info["is_success"] == 1 and 6 < self.stage_info < 9:
                 #set the package boolean True and save goal point, if robot reaches goal and doesnt have a package
                 #set package boolean False and release goal, if robot reaches goal and has a package
                 if self.agent_object_mapping[agent].get_package_boolean():
-                    print(agent + " dropoff")
+                    print(self.agent_object_mapping[agent]._ns_robot + " dropoff")
                     self.agent_object_mapping[agent].set_package_boolean(False)
                     crate_id = self.agent_object_mapping[agent].get_agent_goal()[-1] if self.extended_setup else reward_info["crate_id"]
                     self.agent_publisher(crate_action(crate_action.DROPOFF,"pub"), idx= crate_id,
-                    r_type=self.agent_object_mapping[agent].robot_model,r_id=self.agent_object_mapping[agent]._ns_robot)
+                    r_type=self.agent_object_mapping[agent].robot_model,r_id=self.agent_object_mapping[agent]._ns_robot, goal = Pose2D())
                     self.agent_object_mapping[agent].set_agent_goal([Pose2D()])
-                    self.agent_object_mapping[agent].set_reserved_status(False)
                     reward += 30
-                    if "eval" in self._ns:
-                        self.dones[agent] = True
+                    if self.stage_info > 7:
+                        reward_info["is_done"] = False
+                        self.agent_object_mapping[agent].set_reserved_status(False)
 
                 else:
-                    print(self.agent_object_mapping[agent]._ns_robot + " pickup at:")
-                    print(_dict["current_pos"], self.agent_object_mapping[agent].get_agent_goal())
+                    print(self.agent_object_mapping[agent]._ns_robot + " pickup")
+                    #print(self.agent_object_mapping[agent].get_agent_goal())
                     reward_info["is_done"] = False
                     self.agent_object_mapping[agent].set_package_boolean(True)
                     if self.extended_setup:
@@ -469,43 +588,72 @@ class FlatlandPettingZooEnv(ParallelEnv):
                         pub_goal = _dict["obs_goals"][int(reward_info["crate"])]
                     self.agent_publisher(crate_action(crate_action.PICKUP,"pub"), idx = crate_id, r_type=self.agent_object_mapping[agent].robot_model,
                     r_id=self.agent_object_mapping[agent]._ns_robot, goal = pub_goal)
-            if reward_info["is_done"] and self.stage_info < 1:
-                if self.curr_actions[agent][2] == 0:
-                    reward -= 0.4
+                self.agent_object_mapping[agent].reward_calculator.reset()
+            # elif reward_info["is_success"] == 1 and 3 < self.stage_info < 6 and not self.agent_object_mapping[agent].get_reserved_status():
+            #     reward_info["is_done"] = False
+            #     self.agent_object_mapping[agent].set_reserved_status(True)
+            #     self.agent_publisher(crate_action(crate_action.PICKUP,"pub"), idx = 0, r_type=self.agent_object_mapping[agent].robot_model,
+            #     r_id=self.agent_object_mapping[agent]._ns_robot, goal = _dict["robot_pose"])
+                
+            
+            if reward_info["is_done"]:
                 if not self.dones[agent]:
-                    if reward_info["is_success"] == 1:
-                        print(agent + " success")
-                    else: print(agent + " collision")
+                    # if reward_info["is_success"] == 1:
+                    #     print(agent + " success")
+                    # else: 
+                    #     print(agent + " collision")
                     self.dones[agent] = True
 
             pack_trafo = 1 if self.agent_object_mapping[agent].get_package_boolean() else 0
-            merged[-msg_size-1] = pack_trafo
+            merged[obs_end-1] = pack_trafo
             if self.agent_object_mapping[agent]._agent_params["normalize"]:
                 merged = self.agent_object_mapping[agent].normalize_observations(merged)
+
+            ## add sliding window:    
+            #merged[obs_end:-msg_size] = self.agent_object_mapping[agent].sliding_window.flatten()
             merged_obs[agent] = merged
-            
+            for i in range(1,self.agent_object_mapping[agent].sliding_window.shape[0]):
+                self.agent_object_mapping[agent].sliding_window[i,:] = self.agent_object_mapping[agent].sliding_window[i-1,:]
+            self.agent_object_mapping[agent].sliding_window[0,:] = merged[3*self.obs_goals:obs_end-3]
+            messages[agent] = merged[3*self.obs_goals:obs_end]
+            self.agent_object_mapping[agent].last_pos = _dict["robot_pose"]
+            reward_info["robot_pose"] = _dict["robot_pose"]
             #print(agent, reward, pack_trafo)
             rewards[agent], reward_infos[agent] = reward, reward_info
 
         # dones & infos
         dones, infos = self._get_dones(), self._get_infos(reward_infos)
-        
-        
+        for agent in self.agents:
+            infos[agent]["crash"] = reward_infos[agent]["crash"]
+            infos[agent]["robot_pose"] = reward_infos[agent]["robot_pose"]
+        # m = np.mean([rewards[agent] for agent in self.curr_actions])
+        # for agent in self.curr_actions:
+        #     rewards[agent] = m
+
+        # if self.stage_info<7 and random.randint(1,80) == 5:
+        #     self.agent_publisher(crate_action(crate_action.PICKUP,"pub"),r_type="refresh")
         if self.ports > 0:
             msgs = {}
             for agent in self.curr_actions:
                 try:
                     msg = self.comm_channel.retrieve_messages(agent)
-                    msgs[agent] = np.hstack([msg[key][:-msg_size] for key in msg])
+                    msgs[agent] = np.hstack([msg[key] for key in msg])
+                    #msgs[agent] = np.hstack([msg[key][:-msg_size] for key in msg])
                 except:
-                    msgs[agent] = np.zeros(merged_obs[agent][3*self.obs_goals:-msg_size].size * self.ports)
-                    print("no msg data")
-            self.comm_channel.step(merged_obs, self.curr_actions)
+                    msgs[agent] = np.zeros(messages[agent].size * self.ports)
+                    #msgs[agent] = np.zeros(merged_obs[agent][3*self.obs_goals:-msg_size].size * self.ports) # maybe same as msg_size
+            self.comm_channel.step(messages, self.curr_actions)
             for agent in self.curr_actions:
                 merged_obs[agent][-msg_size:] = np.hstack([msgs[agent], self.comm_channel.get_robots_in_range(agent)])
                 #print(merged_obs[agent].shape)
                 if int(self.curr_actions[agent][-1]) > 0:
-                    rewards[agent] -= 0.8
+                    rewards[agent] -= 0.005
+                elif int(self.curr_actions[agent][-2]) == 0 and merged_obs[agent][-2] != 0:
+                    rewards[agent] -= 0.01
+                elif int(self.curr_actions[agent][-2]) != 0:
+                    rewards[agent] += 0.004
+                    
+
 
         # remove done agents from the active agents list
         self.agents = [agent for agent in self.agents if not dones[agent]]
@@ -515,6 +663,8 @@ class FlatlandPettingZooEnv(ParallelEnv):
             if agent in dones and dones[agent]:
                 self.terminal_observation[agent] = merged_obs[agent]
                 infos[agent]["terminal_observation"] = merged_obs[agent]
+                noop = np.zeros(shape=self.action_space(agent).shape)
+                self.agent_object_mapping[agent].publish_action(noop)
             # agent is done since atleast last episode
             elif agent not in self.agents:
                 if agent not in infos:
@@ -586,6 +736,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
         #     self.stage_info = 1
         # else:
         self.stage_info = msg_stage_info.data
+        self._max_num_moves = int(self.max_num_moves*0.5) if self.stage_info < 6 else int(self.max_num_moves*(self.stage_info-5))
     def _get_infos(
         self, reward_infos: Dict[str, Dict[str, Any]]
     ) -> Dict[str, Dict[str, Any]]:

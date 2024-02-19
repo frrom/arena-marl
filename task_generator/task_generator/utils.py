@@ -18,7 +18,7 @@ def generate_freespace_indices(map_: OccupancyGrid) -> tuple:
     return indices_y_x
 
 
-def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: float, forbidden_zones: list = None, start_pos = None, max_dist = 1000):
+def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: float, forbidden_zones: list = None, no_zones: list = None, start_pos = None, max_dist = 1000, dont_care = False):
     """
     Args:
         indices_y_x(tuple): a 2 elementary tuple stores the indices of the non-occupied cells, the first element is the y-axis indices,
@@ -37,7 +37,10 @@ def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: fl
                 < (forbidden_zone[2] + safe_dist) ** 2
             ):
                 return False
-
+        for forbidden_zone in no_zones:
+            if (forbidden_zone and (forbidden_zone[0]-forbidden_zone[2] < x_in_meters < forbidden_zone[0]+forbidden_zone[2])
+                and (forbidden_zone[1]-forbidden_zone[3]< y_in_meters < forbidden_zone[1]+forbidden_zone[3])):
+                return False
         if start_pos is not None and np.sqrt((x_in_meters-start_pos.x)**2 + (y_in_meters-start_pos.y)**2) > max_dist:
             return False
         # in pixel
@@ -67,6 +70,8 @@ def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: fl
     ), "free_space_indices is not correctly setup"
     if forbidden_zones is None:
         forbidden_zones = []
+    if no_zones is None:
+        no_zones = []
 
     n_freespace_cells = len(free_space_indices[0])
     pos_valid = False
@@ -79,13 +84,18 @@ def get_random_pos_on_map(free_space_indices, map_: OccupancyGrid, safe_dist: fl
         # convert x, y in meters
         y_in_meters = y_in_cells * map_.info.resolution + map_.info.origin.position.y
         x_in_meters = x_in_cells * map_.info.resolution + map_.info.origin.position.x
+        if dont_care:
+            break
         pos_valid = is_pos_valid(x_in_meters, y_in_meters, start_pos, max_dist)
         if not pos_valid:
             n_check_failed += 1
-            if n_check_failed > 200:
+            if n_check_failed > 400:
                 print("no valid position found")
-                return get_random_pos_on_map(free_space_indices, map_, safe_dist, forbidden_zones)
-                raise Exception("cann't find any no-occupied space please check the map information")
+                max_dist = 1.1*max_dist if max_dist else None
+                forbidden_zones = [(forbidden[0], forbidden[1], forbidden[2]*0.8) for forbidden in forbidden_zones if forbidden]
+                return get_random_pos_on_map(free_space_indices, map_, safe_dist/2, forbidden_zones=forbidden_zones, no_zones = no_zones, start_pos=start_pos, max_dist=max_dist)
+                return 0,0,0
+                raise Exception("can't find any no-occupied space please check the map information")
         # in radius
     theta = random.uniform(-math.pi, math.pi)
 

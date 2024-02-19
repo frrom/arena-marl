@@ -14,7 +14,7 @@ class Map:
 
         self.grid = self.make_rware(self.shelf_columns, self.shelf_rows, self.column_height)
         self.grid_size = self.grid.shape
-        cv.imwrite(path,self.generate_map(self.upscale_grid(self.grid,self.scale), self.shelf_rows))
+        cv.imwrite(path,self.generate_map2(self.upscale_grid(self.grid,self.scale), self.shelf_rows))
 
 
     def map_coord_to_image(self,array_coordinates):
@@ -103,3 +103,29 @@ class Map:
                 cv.line(img_with_seperators, line[0], line[1],0, 1)
         
         return img_with_seperators
+    
+    def generate_map2(self, arr, shelf_rows, corridor_width, include_vert_separators=True, include_hor_separators=True):
+        tmp_arr = arr
+        tmp_arr[tmp_arr == 3] = 0
+        _, thresh = cv.threshold(tmp_arr, 1, 255, 0)
+        contours, _ = cv.findContours(thresh.astype(np.uint8), cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+
+        img_with_separators = np.zeros_like(arr)
+
+        for cnt in contours:
+            x, y, w, h = cv.boundingRect(cnt)
+
+            # Add vertical corridor lines
+            if include_vert_separators:
+                corridor_start = int(x + w / 2 - corridor_width / 2)
+                corridor_end = int(x + w / 2 + corridor_width / 2)
+                cv.rectangle(img_with_separators, (corridor_start, y), (corridor_end, y + h), 255, thickness=-1)
+
+            # Add horizontal corridor lines for each shelf
+            shelf_vertical_distance = h / shelf_rows
+            for i in range(shelf_rows + 1):
+                if include_hor_separators:
+                    cv.rectangle(img_with_separators, (x, int(y + shelf_vertical_distance * i - corridor_width / 2)),
+                                (x + w, int(y + shelf_vertical_distance * i + corridor_width / 2)), 255, thickness=-1)
+
+        return img_with_separators

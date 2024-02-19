@@ -9,7 +9,7 @@
   <arg name="train_mode"       default="true"/>
 
   <!-- To make the training more efficient make sure this step_size*laser_update_rate == 1  -->
-  <arg name="step_size" default="0.01"/>
+  <arg name="step_size" default="0.1"/>
   <arg name="update_rate" default="250"/>
   <arg name="show_viz"  default="true"/>
   <arg name="viz_pub_rate" default="30" />
@@ -77,6 +77,7 @@
 
   <include file="$(find arena_bringup)/launch/visualization_training.launch">
     <arg name="rviz_file" value="nav_MARL" />
+    <arg name="ns" value="eval_sim" />
     <arg name="warehouse" value="$(arg warehouse)" />
   </include> 
 

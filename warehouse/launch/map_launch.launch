@@ -50,17 +50,18 @@
   <param name="actions_in_obs" value="$(arg actions_in_obs)" />
 
 
+
   <arg name="shelf_cols" default="1"/>
   <arg name="shelf_rows" default="1"/>
   <arg name="col_height" default="5"/>
+  <arg name="scale" default="100"/>
   <arg name="bigger_highways" default="True"/>
   <arg name="random_map" default="False"/>
   <arg name="add_goals" default="None"/>
   <!-- Gridworld Nodes, start Map_server from map_creator -->
   <node name="map_creator" pkg="warehouse" type="gridworld.py" output="screen" clear_params="true" 
-                args="shelf_cols:=$(arg shelf_cols) shelf_rows:=$(arg shelf_rows) col_height:=$(arg col_height) scale:=100
-                bigger_highways:=$(arg bigger_highways) random_map:=$(arg random_map) add_goals:=$(arg add_goals)
-                ns_prefix:=$(arg ns_prefix) num_robots:=$(arg num_robots) map_folder_name:=$(arg map_folder_name) map_path:=$(arg map_path)"> 
+                args="shelf_cols:=$(arg shelf_cols) shelf_rows:=$(arg shelf_rows) col_height:=$(arg col_height) scale:=$(arg scale)
+                bigger_highways:=$(arg bigger_highways) random_map:=$(arg random_map) add_goals:=$(arg add_goals) map_folder_name:=$(arg map_folder_name) map_path:=$(arg map_path)"> 
 
               <remap from="/gridworld_base" to="/$(arg ns_prefix)/gridworld_base" />
         </node>

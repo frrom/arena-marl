@@ -60,6 +60,8 @@ class ObservationCollector:
         self.num_robots = int(rospy.get_param("num_robots"))
         self.extend = rospy.get_param("warehouse", default = True)
         self._action_in_obs = rospy.get_param("actions_in_obs", default=False)
+        self.window = rospy.get_param("slinding_window", default=True)
+        self.window_length = rospy.get_param("window_length", default=1)
 
         # define observation_space
         if not self._action_in_obs:
@@ -88,13 +90,19 @@ class ObservationCollector:
                         low=-2.0,
                         high=2.0,
                         shape=(2,),
-                        dtype=np.float32,  # linear vel
+                        dtype=np.float32,  # acceleration/linear vel
                     ),
                     spaces.Box(
                         low=-4.0,
                         high=4.0,
                         shape=(1,),
                         dtype=np.float32,  # angular vel
+                    ),
+                    spaces.Box(
+                        low=-10.0,
+                        high=10.0,
+                        shape=(1,),
+                        dtype=np.float32,  # (real) linear vel
                     ),
                     spaces.Box(low=0, high=15, shape=(1,), dtype=np.float32),  # rho_goal
                     spaces.Box(
@@ -107,7 +115,7 @@ class ObservationCollector:
                         low=0.0,
                         high=40.0,
                         shape=(2,),
-                        dtype=np.float32,  # current position
+                        dtype=np.float32,  # current position -- enable for old model
                     ),
                     spaces.Box(
                         low=0,
@@ -117,6 +125,9 @@ class ObservationCollector:
                     ),
                 )
             )
+        self.obs_size = self.observation_space.shape[0]
+        self.msg_size = 0
+        #print(self.obs_size)
         if self.extend:
             self.observation_space = ObservationCollector._stack_spaces((
                 spaces.Box(low=0, high=15, shape=(self.obs_goals,), dtype=np.float32),  # rho
@@ -128,8 +139,47 @@ class ObservationCollector:
                 ),
                 spaces.Box(low=0, high=15, shape=(self.obs_goals,), dtype=np.float32), #target distance
                 self.observation_space))
+        self.window_size = 0
+        if self.window:
+            for _ in range(self.window_length):
+                self.observation_space = ObservationCollector._stack_spaces((self.observation_space,
+                    spaces.Box(
+                        low=0,
+                        high=lidar_range,
+                        shape=(num_lidar_beams,),
+                        dtype=np.float32,
+                    ),
+                    spaces.Box(
+                        low=-2.0,
+                        high=2.0,
+                        shape=(2,),
+                        dtype=np.float32,  # acceleration/linear vel
+                    ),
+                    spaces.Box(
+                        low=-4.0,
+                        high=4.0,
+                        shape=(1,),
+                        dtype=np.float32,  # angular vel
+                    ),
+                    spaces.Box(
+                        low=-10.0,
+                        high=10.0,
+                        shape=(1,),
+                        dtype=np.float32,  # (real) linear vel
+                    ),
+                    spaces.Box(low=0, high=15, shape=(1,), dtype=np.float32),  # rho_goal
+                    spaces.Box(
+                        low=-np.pi,
+                        high=np.pi,
+                        shape=(1,),
+                        dtype=np.float32,  # theta_goal
+                    ),
+                ))
+            self.window_size = self.window_length * (self.obs_size-3)
+
         if self.ports > 0:
-            for i in range(self.ports):
+            self.msg_size = self.obs_size*self.ports + self.ports
+            for _ in range(self.ports):
                 self.observation_space = ObservationCollector._stack_spaces((self.observation_space,
                     spaces.Box(
                         low=0,
@@ -149,6 +199,12 @@ class ObservationCollector:
                         shape=(1,),
                         dtype=np.float32,  # angular vel
                     ),
+                    spaces.Box(
+                        low=-10.0,
+                        high=10.0,
+                        shape=(1,),
+                        dtype=np.float32,  # (real) linear vel
+                    ),
                     spaces.Box(low=0, high=15, shape=(1,), dtype=np.float32),  # rho_goal
                     spaces.Box(
                         low=-np.pi,
@@ -160,7 +216,7 @@ class ObservationCollector:
                         low=0.0,
                         high=40.0,
                         shape=(2,),
-                        dtype=np.float32,  # current position
+                        dtype=np.float32,  # current position of agent j
                     ),
                     spaces.Box(
                         low=0,
@@ -169,14 +225,16 @@ class ObservationCollector:
                         dtype=np.uint8,  # package_boolean
                     ),
                 ))
+            
             self.observation_space = ObservationCollector._stack_spaces((self.observation_space,
                 spaces.Box(
                         low=0,
-                        high=self.num_robots,
+                        high=4,
                         shape=(self.ports,),
                         dtype=np.uint8,  #robots to choose from
                     )))
         self._laser_num_beams = num_lidar_beams
+        print(self.observation_space.shape)
         # for frequency controlling
         self._action_frequency = 1 / rospy.get_param("/robot_action_rate")
 
@@ -248,6 +306,7 @@ class ObservationCollector:
         self._subgoals_sub = rospy.Subscriber(
             f"{self.ns_prefix}open_tasks", robot_goal_list, self.callback_subgoals #first training stage
         )
+        #print("listener ", f"{self.ns_prefix}open_tasks")
         self._subgoals2_sub = rospy.Subscriber(
             f"{self._sim}/open_tasks", robot_goal_list, self.callback_subgoals #last training stage (full warehouse)
         )
@@ -297,9 +356,13 @@ class ObservationCollector:
         pub_crates = np.zeros((self.obs_goals,2))
         
         for i, goal in enumerate(self._subgoals):
-            rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
-                goal, self._robot_pose
-            )
+            if goal.x == 0:
+                rho = 0
+                theta = 1
+            else:
+                rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
+                    goal, self._robot_pose
+                )
             if goal_dists[-1] == 0:
                 pub_goals[i,:] = [rho, theta]
                 rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
@@ -309,7 +372,7 @@ class ObservationCollector:
                 self._crate_list[i], goal)
             else:
                 break
-        rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(self._subgoal, self._robot_pose)
+        rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(self._subgoal, self._robot_pose) if self._subgoal.x != 0 else (0,0)
         merged_obs = (
             np.hstack([scan, np.array([rho, theta])])
             if not self._action_in_obs
@@ -317,6 +380,7 @@ class ObservationCollector:
                 [
                     scan,
                     kwargs.get("last_action", np.array([0, 0, 0])),
+                    np.array([0]),
                     np.array([rho,theta]),
                     np.array([self._robot_pose.x, self._robot_pose.y]),
                     np.array([0])
@@ -324,10 +388,15 @@ class ObservationCollector:
                 ]
             )
         )
-        msg_size = 0
+        if self.window:
+            window = np.zeros(self.window_size)
+            merged_obs = np.hstack(
+                [
+                merged_obs,
+                window
+                ])
         if self.ports > 0:
-            msg_size = merged_obs.size*self.ports + self.ports
-            msgs = np.zeros(msg_size)
+            msgs = np.zeros(self.msg_size)
             merged_obs = np.hstack(
                 [
                 merged_obs,
@@ -342,7 +411,6 @@ class ObservationCollector:
                 merged_obs
                 ])
         
-        
         obs_dict = {
             "laser_scan": scan,
             "goal_in_robot_frame": [rho, theta],
@@ -355,7 +423,7 @@ class ObservationCollector:
             "ids": self._id_list,
             "obs_goals": self._subgoals,
             "obs_crates": self._crate_list,
-            "msg_size": msg_size
+            "curr_goal": self._subgoal,
         }
 
         self._laser_deque.clear()
@@ -370,6 +438,8 @@ class ObservationCollector:
         theta = (np.arctan2(y_relative, x_relative) - robot_pos.theta + 4 * np.pi) % (
             2 * np.pi
         ) - np.pi
+        # angle =  np.arctan2(y_relative, x_relative) - robot_pos.theta
+        # theta = angle - math.trunc(angle/np.pi)*2*np.pi
         return rho, theta
 
     def get_sync_obs(self):
@@ -436,6 +506,10 @@ class ObservationCollector:
     def callback_subgoal(self, msg_Subgoal):
         self._subgoal = self.process_subgoal_msg(msg_Subgoal)
         return
+    def callback_close_subgoals(self, msg:robot_goal_list):
+        self.callback_subgoals(msg)
+        return
+    
     def callback_subgoals(self, msg: robot_goal_list):
         goal_list = []
         crate_list = []

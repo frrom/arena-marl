@@ -13,6 +13,7 @@ class Channel:
                 agents: dict = {},
                 ports: int = 2,
                 signal_range: float = 5.0,
+                force: bool = False
                 ):
         self.signal_range = signal_range
         self.ns = ns
@@ -24,6 +25,8 @@ class Channel:
         self.ports = ports
         self.inrange = {}
         self.obs_goals = int(rospy.get_param("/observable_task_goals"))
+        self.force = force
+        #self.force = True
 
     def add_robot(self,robot:str, mapping):
         self.robots[robot] = mapping
@@ -53,12 +56,12 @@ class Channel:
     def send_message_request(self, source, ports):
         if source in self.inrange:
             if int(ports[-1]) > 0 and np.array(self.inrange[source]).all() != 0:
-                print(source + " broadcasting")
+                #print(source + " broadcasting")
                 for ins in self.inrange[source]:
-                    self.messages["robot"+str(ins)]["broadcast"] = self.observations[source][3*self.obs_goals:]
+                    self.messages["robot"+str(ins)]["broadcast"] = self.observations[source]
                 for i in range(len(ports)-1):
                     key = "robot"+str(self.inrange[source][i]) if source in self.inrange else "robot"+str(i)
-                    self.messages[source][key] = np.zeros(self.observations[source][3*self.obs_goals:].shape)
+                    self.messages[source][key] = np.zeros(self.observations[source].shape)
                 random.shuffle(self.active_robots)
                 # l = list(self.robots.items())
                 # random.shuffle(l)
@@ -68,22 +71,23 @@ class Channel:
         for i in range(len(ports)-1):
             try:
                 key = "robot"+str(self.inrange[source][i])
-                if int(ports[i]) > 0:
-                    self.messages[source][key] = self.observations[key][3*self.obs_goals:]
+                if int(ports[i]) > 0 or self.force:
+                    self.messages[source][key] = self.observations[key]
+                    #print("message from " + key + " to " + source)
                 else:
-                    self.messages[source][key] = np.zeros(self.observations[key][3*self.obs_goals:].shape)   
+                    self.messages[source][key] = np.zeros(self.observations[key].shape)   
             except:
-                self.messages[source]["robot"+str(i)] = np.zeros(self.observations[source][3*self.obs_goals:].shape)
+                self.messages[source]["robot"+str(i)] = np.zeros(self.observations[source].shape)
         return
 
 
     def retrieve_messages(self, robot):
         if "broadcast" not in self.messages[robot]:
-            self.messages[robot]["broadcast"] = np.zeros(self.observations[robot][3*self.obs_goals:].size)
+            self.messages[robot]["broadcast"] = np.zeros(self.observations[robot].size)
         messages = self.messages[robot]
         self.messages[robot] = {}
         if len(messages.keys()) != self.ports:
-            print("keys not matching")
+            #print("keys not matching")
             raise IndexError
         return messages
 

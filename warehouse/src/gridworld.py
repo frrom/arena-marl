@@ -78,9 +78,13 @@ class Map:
 
         self.grid = self.add_walls(self.grid)
         print(self.grid)
-        print(self.scale)
-        print(self.column_height)
-        self.map = self.generate_map(self.upscale_grid(np.flip(self.grid,axis=0),self.scale), self.column_height)
+        normal = True
+        #print(self.scale)
+        #print(self.column_height)
+        if normal:
+            self.map = self.generate_map(self.upscale_grid(np.flip(self.grid,axis=0),self.scale), self.column_height)
+        else:
+            self.map = self.generate_map3(self.scale, self.shelf_rows)
         self.grid_size = self.grid.shape
 
 
@@ -90,7 +94,7 @@ class Map:
             Folder will be named gridworld+(custom_name)
             '''
         if self.setup_name is None:
-            self.setup_name = 'gridworld'#_sc'+str(self.shelf_columns)+'_sr'+str(self.shelf_rows)+'_ch'+str(self.column_height)
+            self.setup_name = 'default_gridworld'#_sc'+str(self.shelf_columns)+'_sr'+str(self.shelf_rows)+'_ch'+str(self.column_height)
         setup_pth = os.path.join(self.path2setup,self.setup_name)
 
         if not os.path.isdir(setup_pth):
@@ -104,9 +108,9 @@ class Map:
         map_world_yaml = {'properties': {'velocity_iterations': 10, 'position_iterations': 10},
                     'layers': [{'name': 'static', 'map': 'map.yaml', 'color': [0, 1, 0, 1]}]}
         map_yaml = {'image': 'map.png', 'resolution': 0.01, 'origin': [self.x_origin, self.y_origin, 0.0],
-                    'negate': 0, 'occupied_thresh': 0.65, 'free_thresh': 0.196}    
+                    'negate': 0, 'occupied_thresh': 0.65, 'free_thresh': 0.196, 'corridors' : self.shelf_rows}    
 
-        
+        print(setup_pth)
         with open(setup_pth+'/map.world.yaml', 'w') as file:
             documents1= yaml.dump(map_world_yaml, file, default_flow_style=None)
 
@@ -138,13 +142,13 @@ class Map:
             return: numpy array of the warehouse
             '''
 
-        assert shelf_columns % 2 == 1, "Only odd number of shelf columns is supported"
+        #assert shelf_columns % 2 == 1, "Only odd number of shelf columns is supported"
 
         grid_size = (
             (column_height+1)*shelf_rows + 2,
             (2 + 1) * shelf_columns + 1,
         )
-        print(grid_size)
+        #print(grid_size)
         column_height = column_height
         grid = np.zeros((2, *grid_size), dtype=np.int32)
         goals = [
@@ -166,7 +170,7 @@ class Map:
         for x in range(grid_size[1]):
             for y in range(grid_size[0]):
                 highways[y, x] = highway_func(x, y)
-        print(highways)
+        #print(highways)
         for x,y in goals:
             highways[y,x]=FREE_GOAL
 
@@ -175,7 +179,7 @@ class Map:
 
         return highways
 
-    def generate_map(self,arr, shelf_rows, include_vert_seperators=True, include_hor_seperators=True):
+    def generate_map(self, arr, shelf_rows, include_vert_seperators=True, include_hor_seperators=True):
         '''
             creates the map.png from grid array
             draw seperators between the individual shelf cells
@@ -223,20 +227,82 @@ class Map:
         
         return img_with_seperators
 
+    def generate_map2(self, scale, rows=5, corridor_width=150, include_vert_separators=True, include_hor_separators=True):
+        #tmp_arr = copy.deepcopy(arr)
+        tmp_arr = np.zeros((scale*10,scale*10))
+        tmp_arr[0:50,:] = 2
+        tmp_arr[-50:-1,:]= 2
+        tmp_arr[:,0:50] = 2
+        tmp_arr[:,-50:-1] = 2
+        #tmp_arr[tmp_arr != WALL] = 0
+        _, thresh = cv.threshold(tmp_arr, 1, 255, 0)
+        contours, _ = cv.findContours(thresh.astype(np.uint8), cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+        img_with_separators = np.zeros_like(tmp_arr)
+        ver = rows // 2 + 1
+        hor = rows//2 + rows%2 + 1
+        print(ver, hor)
+        print(img_with_separators)
+        x, y, w, h = 0,0,0,0
+        #cv.rectangle(img_with_separators, (corridor_start, y), (corridor_end, y + h), 255, thickness=-1)
+        for cnt in contours:
+            #print(cnt)
+            xn,yn,wn,hn = cv.boundingRect(cnt)
+            if xn >= x:
+                x, y, w, h = xn, yn, wn, hn
+            #x, y, w, h = cv.boundingRect(cnt)
+            print(x,y,w,h)
+            # Add vertical corridor lines
+        for i in range(ver-1):
+            cv.rectangle(img_with_separators, (int(x + (i+1)/ver*w - corridor_width / 2), y), 
+                            (int(x + (i+1)/ver*w + corridor_width / 2), y + h), 255, thickness=-1)
+        for i in range(hor-1):
+            cv.rectangle(img_with_separators, (x, int(y + (i+1)/hor*h - corridor_width / 2)),
+                                (x + w, int(y +  (i+1)/hor*h + corridor_width / 2)), 255, thickness=-1)
+            
+
+            # Add horizontal corridor lines for each shelf
+            # shelf_vertical_distance = h / shelf_rows
+            # for i in range(shelf_rows + 1):
+            #     if include_hor_separators:
+            #         cv.rectangle(img_with_separators, (x, int(y + shelf_vertical_distance * i - corridor_width / 2)),
+            #                     (x + w, int(y + shelf_vertical_distance * i + corridor_width / 2)), 255, thickness=-1)
+        #img_with_separators[arr == WALL] = 0
+        return img_with_separators
+    
+    def generate_map3(self, scale, rows=5, corridor_width=150, include_vert_separators=True, include_hor_separators=True):
+        tmp_arr = np.zeros((scale*10,scale*10))
+        tmp_arr[0:50,:] = 2
+        tmp_arr[-50:-1,:]= 2
+        tmp_arr[:,0:50] = 2
+        tmp_arr[:,-50:-1] = 2
+        #tmp_arr[tmp_arr != WALL] = 0
+        _, thresh = cv.threshold(tmp_arr, 1, 255, 0)
+        contours, _ = cv.findContours(thresh.astype(np.uint8), cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+        img_with_separators = np.zeros_like(tmp_arr)
+        x, y, w, h = 0,0,0,0
+        for cnt in contours:
+            xn,yn,wn,hn = cv.boundingRect(cnt)
+            if xn > x:
+                x, y, w, h = xn, yn, wn, hn
+                print(x,y,w,h)
+                cv.rectangle(img_with_separators, (w,y), 
+                (x,h), 255, thickness=-1)
+        
+
+        return img_with_separators
     def increase_highways(self):
         ''' We need to build a bigger highway so more robots can move between shelfs'''
         w,h = self.grid.shape
         added_col_counter = 0
         #add additional zeros cols
         highway_cols = np.where(np.sum(self.grid, 0)==0)[0] # axis needs testing
-        
+        highway_cols2 = np.where(np.sum(self.grid, 0)==3)[0]
+        highway_cols = np.hstack((highway_cols, highway_cols2))
         for i in highway_cols:
             self.grid = np.insert(self.grid, i+added_col_counter, 0, axis=1)
             added_col_counter+=1
-        
         added_col_counter = 0
         highway_rows = np.where(np.sum(self.grid, 1)==0)[0] # axis needs testing
-        
         for j in highway_rows:
             self.grid = np.insert(self.grid, j+added_col_counter, 0, axis=0)
             added_col_counter+=1
@@ -335,13 +401,15 @@ if __name__ == '__main__':
     bigger_highways, rand_map = [bool(a.split(':=')[-1]) for a in grid_args[4:6]]
     additional_goals = grid_args[6]
     rand_map = False
-
+    folder = sys.argv[8].split(':=')[-1]
+    print(sys.argv[8])
 
     grid = Map( shelf_columns=shelf_cols,
                 shelf_rows=shelf_rows,
                 column_height=col_height, 
                 bigger_highways=bigger_highways,
                 scale=scale,
+                setup_name= folder,
                 random_map = rand_map,
                 additional_goals = additional_goals
                 )

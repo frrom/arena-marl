@@ -3,7 +3,7 @@ debug_mode: false
 
 # Hardware specifc configurations
 # number of parallel environments
-n_envs: 15
+n_envs: 6
 # gpu yes or no
 no_gpu: no
 
@@ -13,15 +13,15 @@ no_gpu: no
 task_mode: "cases"
 # number of simulation timesteps
 n_timesteps: 40000000
-max_num_moves_per_eps: 400
+max_num_moves_per_eps: 380 #380
 
 periodic_eval:
   # max number of steps per episode
-  max_num_moves_per_eps: 450 # 1000
+  max_num_moves_per_eps: 600 # 1000
   # number of evaluation episodes
-  n_eval_episodes: 40 # 100
+  n_eval_episodes: 50 # 100
   # evaluation frequency, evaluation after every n_envs * 20000 timesteps
-  eval_freq: 3000 # 20000
+  eval_freq: 10000 # 20000
 
 ### training_curriculum
 # threshold metric to be considered during evaluation
@@ -30,8 +30,8 @@ training_curriculum:
   # file for the robot's learning curriculum
   training_curriculum_file: "marl_warehouse.yaml"
   threshold_type: "succ"
-  upper_threshold: 0.8
-  lower_threshold: 0.35
+  upper_threshold: 0.85
+  lower_threshold: 0.34
 
 ### evaluation_curriculum
 # threshold metric to be considered during evaluation
@@ -40,7 +40,7 @@ evaluation_curriculum:
   # file for the robot's learning curriculum
   evaluation_curriculum_file: "marl_warehouse.yaml"
   threshold_type: "succ"
-  upper_threshold: 0.8
+  upper_threshold: 0.85
   lower_threshold: 0.35
 
 ### stop training on threshold
@@ -65,20 +65,19 @@ global_tasks: true
 robots:
   jackal:
     # number of robots of this type
-    num_robots: 4
+    num_robots: 8
     # name of hyperparameter file located in the configs/hyperparameters directory
     hyperparameter_file: "jackal.json" # "default.json"
     # name of architecture defined in the Policy factory
-    architecture_name: "AGENT_26"
+    #architecture_name: "AGENT_28" #old network use for working system!
+    #architecture_name: "AGENT_26" #current network use for working system!
+    architecture_name: "AGENT_27" #use for everything!!
 
     # path to latest checkpoint; if provided the training will be resumed from that checkpoint
-    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_04_06__18_19/jackal_2023_04_06__18_19"
-    resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/backup3/jackal_2023_04_13__14_53"
-    #resume: null
-    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_04_04__13_58/jackal_2023_04_04__13_58"
-    ##resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_03_08__18_03/jackal_2023_03_08__18_03"
-    ##resume : "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_01_09__16_13/jackal_2023_01_09__16_13"
-    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/best_comm_model/jackal_2023_02_28__15_19"
+    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/comm_lstm/jackal_2023_07_03__15_17" #old working system
+    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_10_08__16_08/jackal_2023_10_08__16_08" #current working system
+    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_11_29__14_45/jackal_2023_11_29__14_45"
+    resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2024_01_06__18_25/jackal_2024_01_06__18_25" #use for everything!!
   # rto:
   #   # number of robots of this type
   #   num_robots: 3

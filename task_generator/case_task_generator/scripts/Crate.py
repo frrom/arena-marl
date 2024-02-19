@@ -26,9 +26,9 @@ class Crate:
                 and other.current_location == self.current_location \
                     and other.goal == self.goal
 
-    def move(self, new_location):
+    def move(self, new_location, trns = True):
         self.current_location = new_location
-        self.delivered = True if np.equal(new_location,self.goal).all() else False
+        self.delivered = True if np.equal(new_location,self.goal).all() and trns else False
 
     def set_new_goal(self, goal: np.ndarray):
         self.goal = goal
@@ -143,7 +143,7 @@ class CrateStack:
             print(self._crate_map)
             warnings.warn(f'{crate_location} does not have a Crate.', CrateWarning)
 
-    def drop_crate(self, crate_index: int, drop_location: np.ndarray):
+    def drop_crate(self, crate_index: int, drop_location: np.ndarray = None):
         """
         If the crate with crate_index is in transit, drop it at drop_location.
 
@@ -151,11 +151,14 @@ class CrateStack:
         """
         for crate in self._in_transit:
             if crate.index == crate_index:
+                if drop_location is None:
+                    drop_location = crate.goal
                 if drop_location.tobytes() in self._crate_map:
                     warnings.warn("Can't drop crate on top of other crate", CrateWarning)
                 else:
                     self._crate_map[drop_location.tobytes()] = crate
                     self._in_transit.remove(crate)
+                    #trns = drop_location[0] > 9
                     crate.move(drop_location)
                 return True
         else:

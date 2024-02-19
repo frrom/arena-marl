@@ -97,4 +97,4 @@ def vec_env_create(
     vec_env = ConcatVecEnv(env_list_fns, observation_space, action_space)
     fin_env = sb3vw.SB3VecEnvWrapper(vec_env)
     obs = fin_env.reset()    
-    return fin_env, observation_space
+    return fin_env, observation_space, action_space

@@ -4,7 +4,20 @@ import numpy as np
 import scipy.spatial
 from geometry_msgs.msg import Pose2D
 from numpy.lib.utils import safe_eval
+import math
+import rospy
+from std_msgs.msg import Int8
 
+
+def polar_displacement(pos1, pos2, delta_t):
+    delta_r = math.sqrt(pos1[0]**2 + pos2[0]**2 - 2*pos1[0]*pos2[0]*math.cos(pos2[1] - pos1[1]))
+    delta_theta = math.atan2(pos2[0]*math.sin(pos2[1] - pos1[1]), pos1[0] - pos2[0]*math.cos(pos2[1] - pos1[1]))
+    if abs(delta_theta) < np.pi/2:
+        delta_r = -delta_r
+    v_r = delta_r/delta_t
+
+    v_theta = (pos2[1] - pos1[1])/delta_t
+    return v_r, v_theta
 
 class RewardCalculator:
     def __init__(
@@ -40,6 +53,20 @@ class RewardCalculator:
         self.crate = 0
         self.steps = 0
         self.max_steps = max_steps
+        self.min_dist = 1000
+        self.curr_vel = 0
+        self.curr_avel = 0
+        self.counter = 0
+        self.last_goal_in_robot_frame = None
+        self.extended_setup = rospy.get_param("choose_goal", default = True)
+        self.crossroad = rospy.get_param("crossroad", default=False)
+        self._stage_info = rospy.Subscriber("stage_info", Int8, self.callback_stage_info)
+        self.stage_info = rospy.get_param("/curr_stage", default = 1)
+        self.subreward = 0
+        self.counter2 = 0
+        self.factor = 1
+        self.angle = 0
+        self.intermediate = 0
 
         self.kdtree = None
 
@@ -67,6 +94,16 @@ class RewardCalculator:
         self._curr_dist_to_path = None
         self.crate = 0
         self.steps = 0
+        self.min_dist = 1000
+        self.curr_vel = 0
+        self.counter = 0
+        self.curr_avel= 0
+        self.last_goal_in_robot_frame = None
+        self.subreward = 0
+        self.factor = 1
+        self.counter2 = 0
+        self.angle = 0
+        self.intermediate = 0
 
     def _reset(self):
         """
@@ -76,6 +113,7 @@ class RewardCalculator:
         self.info = {}
         self.info["is_success"] = 0
         self.info["crate"] = self.crate
+        self.info["crash"] = False
 
     def get_reward(
         self,
@@ -83,6 +121,8 @@ class RewardCalculator:
         goal_in_robot_frame: Tuple[float, float],
         goals_in_robot_frame: np.ndarray = np.array([]),
         package: bool = False,
+        vel = [0,0],
+        curr_goal = Pose2D(),
         ids: np.ndarray = np.array([]),
         *args,
         **kwargs
@@ -94,10 +134,10 @@ class RewardCalculator:
         :param goal_in_robot_frame (Tuple[float,float]): position (rho, theta) of the goal in robot frame (Polar coordinate)
         """
         self._reset()
-        if len(goals_in_robot_frame) == 0:
-            self.cal_func(self, laser_scan, goal_in_robot_frame, *args, **kwargs)
+        if self.extended_setup:
+            self.cal_func(self, laser_scan, goal_in_robot_frame, goals_in_robot_frame=goals_in_robot_frame, vel=vel, goal= curr_goal, *args, **kwargs)
         else:
-            self.cal_func(self, laser_scan, goal_in_robot_frame, goals_in_robot_frame = goals_in_robot_frame, package = package, idx = ids, *args, **kwargs)
+            self.cal_func(self, laser_scan, goal_in_robot_frame, *args, **kwargs)
         return self.curr_reward, self.info
 
     def _cal_reward_rule_00(
@@ -262,38 +302,43 @@ class RewardCalculator:
         goal_in_robot_frame: Tuple[float, float],
         goals_in_robot_frame: np.ndarray = np.array([]),
         ids: np.ndarray = np.array([]),
-        package: bool = True,
+        package: bool = False,
+        vel= [0,0],
+        goal=Pose2D(),
         *args,
         **kwargs
     ):
         self._curr_action = kwargs["action"]
+        self.curr_pos = kwargs["robot_pose"]
         # self._set_current_dist_to_globalplan(
         #     kwargs["global_plan"], kwargs["robot_pose"]
         # )
-        if laser_scan.min() > self.safe_dist:
-            self._reward_abrupt_vel_change(vel_idx=0, factor=0.3)
-            self._reward_abrupt_vel_change(vel_idx=-1, factor=0.1)
-            if self.holonomic:
-                self._reward_abrupt_vel_change(vel_idx=1, factor=0.1)
-            self._reward_reverse_drive(self._curr_action, 0.0001)
-        if package or goal_in_robot_frame[0] != 0:
-            self._reward_goal_approached(goal_in_robot_frame, reward_factor=0.4, penalty_factor=0.55)
+
+        self.info["is_done"] = False
+        self.curr_vel, self.curr_avel = vel[0], vel[1]
+        mode = 1 if self.stage_info > 1 else 0
+        if laser_scan.min() > 1.3*self.safe_dist:
+            self._reward_abrupt_vel_change(vel_idx=0, factor=0.1)
+            self._reward_abrupt_vel_change(vel_idx=1, factor=0.03)
+            # if self.holonomic:
+            #     self._reward_abrupt_vel_change(vel_idx=1, factor=0.03)
+            self._reward_reverse_drive()
+        if goal_in_robot_frame[0] != 0:
+            self._reward_goal_approached(goal_in_robot_frame, goal, reward_factor=0.4, penalty_factor=0.5, mode=mode)
+            self._reward_not_moving(punishment=0.008)
             self._reward_goal_reached(goal_in_robot_frame, reward=40.0)
         else:
-            self._reward_distance_to_goals(goals_in_robot_frame)
-            for i, goal in enumerate(goals_in_robot_frame):
-                if not (goal[0] == 0 and goal[1] == 0):
-                    self._reward_goal_reached(goal, reward=13)
-                    if self.info["is_done"] and self.info["is_success"]==1:
-                        self.crate = i
-                        self.info["crate_id"] = ids[self.crate]
-                        self.info["is_done"] = False
-                        break
-        self.info["crate"] = self.crate
-        self._reward_safe_dist(laser_scan, punishment=0.05)
-        self._reward_distance_traveled(mode = 1, penalty = 0.2)
+            self.curr_reward -= 0.04
+
+        #self._reward_max_velocity(max_vel = 0.6)
+        self._reward_safe_dist(laser_scan, punishment=0.04)
+        if self.stage_info > 1:
+            self._reward_high_conc_force()
+            self._reward_steering()
+        self._reward_distance_traveled(mode = 1, penalty = 0.005)
         self._reward_collision(laser_scan, punishment=10.0)
-        
+    
+        self.last_goal_in_robot_frame = goal_in_robot_frame
         self.last_action = self._curr_action
     def _cal_reward_rule_barn(
         self,
@@ -334,6 +379,9 @@ class RewardCalculator:
             self._curr_dist_to_path, idx = self.get_min_dist2global_kdtree(
                 global_plan, robot_pose
             )
+    def _reward_max_velocity(self, max_vel, penalty_factor=0.5):
+        if self.curr_vel > max_vel:
+            self.curr_reward -= penalty_factor*(self.curr_vel-max_vel)**2
 
     def _reward_goal_reached(
         self, goal_in_robot_frame=Tuple[float, float], reward: float = 15
@@ -350,8 +398,7 @@ class RewardCalculator:
             self.info["done_reason"] = 2
             self.info["is_success"] = 1
             self.steps = 0
-        else:
-            self.info["is_done"] = False
+            self.subreward = 0
         
     def _reward_distance_to_goals(self,
         goals_in_robot_frame: np.ndarray,
@@ -365,8 +412,10 @@ class RewardCalculator:
     def _reward_goal_approached(
         self,
         goal_in_robot_frame=Tuple[float, float],
+        goal = Pose2D(),
         reward_factor: float = 0.3,
-        penalty_factor: float = 0.5
+        penalty_factor: float = 0.5,
+        mode = 0
     ):
         """
         Reward for approaching the goal.
@@ -380,19 +429,86 @@ class RewardCalculator:
 
             # higher negative weight when moving away from goal
             # (to avoid driving unnecessary circles when train in contin. action space)
-            if (self.last_goal_dist - goal_in_robot_frame[0]) > 0:
-                w = reward_factor
+            step_reward = 0.5
+            if self.crossroad:
+                self.subreward = 2
+            if mode == 1:
+                x = goal.x
+                if not self.crossroad and 3-self.robot_radius < self.curr_pos.x < 5+self.robot_radius and 3 < self.curr_pos.y < 8 and goal_in_robot_frame[0] > 0.5 + self.robot_radius:
+                    self.curr_reward -= 0.01
+                if (self.subreward == 2 or ((x > 4 and self.curr_pos.x >= 4.5) or (x < 4 and self.curr_pos.x <= 3.5) or (goal.y > 8 and self.curr_pos.y > 8) or (goal.y < 3 and self.curr_pos.y < 3))) and goal.x != 0:
+                    if self.subreward < 2:
+                        self.min_dist = goal_in_robot_frame[0]
+                        self.intermediate = goal_in_robot_frame[0] if self.intermediate == 0 else min(abs(8-goal.y),abs(goal.y-3))+0.75
+                        self.subreward = 2
+                        #self.curr_reward += 0.02
+                    if self.min_dist > goal_in_robot_frame[0]:
+                        if (self.intermediate - goal_in_robot_frame[0]) > step_reward:
+                            self.curr_reward += (self.intermediate - goal_in_robot_frame[0])//step_reward
+                            self.intermediate = self.intermediate - (self.intermediate - goal_in_robot_frame[0])//step_reward*step_reward
+                        self.min_dist = goal_in_robot_frame[0]
+                    # else:
+                    #     self.curr_reward -= 0.02
+                    if (self.last_goal_dist - goal_in_robot_frame[0]) > 0:
+                        w = reward_factor
+                    else:
+                        w = penalty_factor
+                        self.curr_reward -= 0.02
+                    self.curr_reward += w * (self.last_goal_dist - goal_in_robot_frame[0])
+                    # if (self.last_goal_dist - goal_in_robot_frame[0]) <= 0:
+                    #     self.curr_reward -= 0.02
+                    self.last_goal_dist = goal_in_robot_frame[0]
+                elif self.subreward < 2:
+                    if self.subreward == 0:
+                        dist = min(abs(8 - self.curr_pos.y), abs(self.curr_pos.y - 3))
+                        if self.min_dist > dist:
+                            if self.min_dist > 100:
+                                self.intermediate = dist
+                                self.last_goal_dist = dist
+                            self.min_dist = dist
+                            
+                            if (self.intermediate - dist) > step_reward:
+                                self.curr_reward += (self.intermediate - dist)//step_reward
+                                self.intermediate = self.intermediate - (self.intermediate - dist)//step_reward*step_reward
+                        # else:
+                        #     self.curr_reward -= 0.03
+                        if self.curr_pos.y > 8.0 or self.curr_pos.y < 3.0:
+                            self.subreward = 1
+                            self.min_dist = 1000
+                    if self.subreward == 1:
+                        dist = abs(x - self.curr_pos.x)
+                        if self.min_dist > dist:
+                            if self.min_dist > 100:
+                                self.intermediate = 1.5
+                                self.last_goal_dist = dist
+                            self.min_dist = dist
+                            if (self.intermediate - dist) > step_reward:
+                                self.curr_reward += (self.intermediate - dist)//step_reward
+                                self.intermediate = self.intermediate - (self.intermediate - dist)//step_reward*step_reward
+                        # else:
+                        #     self.curr_reward -= 0.03
+                    # if (self.last_goal_dist - dist) <= 0:
+                    #     self.curr_reward -= 0.02
+                    if (self.last_goal_dist - dist) > 0:
+                        w = reward_factor
+                    else:
+                        w = penalty_factor
+                        self.curr_reward -= 0.02
+                    self.curr_reward += w * (self.last_goal_dist - dist)
+                    self.last_goal_dist = dist
+                else:
+                    self.curr_reward -= 0.03
             else:
-                w = penalty_factor
-            reward = w * (self.last_goal_dist - goal_in_robot_frame[0])
-            reward2 = reward_factor*np.exp(-(goal_in_robot_frame[0]-self.goal_radius)*0.2)
-            # print("reward_goal_approached:  {}".format(reward))
-            reward2 = reward2/(1+self.steps)
-            reward2 = 0
-            self.curr_reward += (reward + reward2)
-            self.steps += 0.1
-            #print(self.curr_reward)
-        self.last_goal_dist = goal_in_robot_frame[0]
+                if (self.last_goal_dist - goal_in_robot_frame[0]) > 0:
+                    w = reward_factor
+                else:
+                    w = penalty_factor
+                reward = w * (self.last_goal_dist - goal_in_robot_frame[0])
+                self.curr_reward += reward
+                self.last_goal_dist = goal_in_robot_frame[0]
+        else:
+            self.last_goal_dist = goal_in_robot_frame[0]
+                
 
     def _reward_collision(self, laser_scan: np.ndarray, punishment: float = 10):
         """
@@ -401,19 +517,22 @@ class RewardCalculator:
         :param laser_scan (np.ndarray): laser scan data
         :param punishment (float, optional): punishment for collision. defaults to 10
         """
-        if laser_scan.min() <= self.robot_radius and self.steps > 0.5:
-            punish = 0
-            for i in range(int(self.steps/0.1), self.max_steps):
-                punish += min(i*0.1/100, 0.2)
-            self.curr_reward -= punishment
-            self.curr_reward -= punish
-
-            if not self._extended_eval:
-                self.info["is_done"] = True
-                self.info["done_reason"] = 1
-                self.info["is_success"] = 0
+        if laser_scan.min() <= self.robot_radius:
+            # punish = 0
+            # for i in range(int(self.steps/0.1), self.max_steps):
+            #     punish += min(i*0.1/100, 0.1)
+            # self.curr_reward -= punish
+            self.info["crash"] = True
+            if self.stage_info > 6:
+                self.curr_reward -= punishment
+            
+                if not self._extended_eval:
+                    self.info["is_done"] = True
+                    self.info["done_reason"] = 1
+                    self.info["is_success"] = 0
             else:
-                self.info["crash"] = True
+                self.curr_reward -= (0.5 + 0.3*self.stage_info)*max(0.7,4*self._curr_action[0]**2)
+                #self.curr_reward -= 0.6*np.exp(0.5*(self.stage_info-3))*max(0.7,2*abs(self.curr_vel))
 
     def _reward_safe_dist(self, laser_scan: np.ndarray, punishment: float = 0.15):
         """
@@ -422,13 +541,13 @@ class RewardCalculator:
         :param laser_scan (np.ndarray): laser scan data
         :param punishment (float, optional): punishment for undercutting. defaults to 0.15
         """
-        if laser_scan.min() < self.safe_dist:
-            self.curr_reward -= punishment
-
+        if laser_scan.min() < 1.15*self.safe_dist:
+            self.curr_reward -= self.stage_info*punishment*np.exp(-laser_scan.min()+self.robot_radius)
+            #print(2*punishment*np.exp(2*(-laser_scan.min()+self.robot_radius)))
             if self._extended_eval:
                 self.info["safe_dist"] = True
-
-    def _reward_not_moving(self, action: np.ndarray = None, punishment: float = 0.01):
+        
+    def _reward_not_moving(self, action: np.ndarray = None, punishment: float = 0.02):
         """
         Reward for not moving. Only applies half of the punishment amount
         when angular velocity is larger than zero.
@@ -438,6 +557,26 @@ class RewardCalculator:
         """
         if action is not None and action[0] == 0.0:
             self.curr_reward -= punishment if action[1] == 0.0 else punishment / 2
+        else:
+            if abs(self.curr_vel) <= 0.01:
+                self.curr_reward -= punishment
+                self.counter += 1
+            else:
+                self.counter = 0
+            # if abs(self.curr_vel - self._curr_action[0]) > 0.1:
+            #     self.counter2 = min(14, self.counter2 + 1) 
+            #     if self.counter2 > 10:
+            #         self.curr_reward -= 0.1*np.exp(0.5*(self.stage_info-3))*(self.counter2-10)
+            # else:
+            #     self.counter2 = max(0,self.counter2 - 1)
+            if self.counter > 20:
+                if self.stage_info == 8:
+                    self.info["is_done"] = True
+                    self.info["done_reason"] = 1
+                    self.info["is_success"] = 0
+                    self.curr_reward -= 10.0
+                else:
+                    self.curr_reward -= 0.2
 
     def _reward_distance_traveled(
         self,
@@ -455,13 +594,17 @@ class RewardCalculator:
         :param consumption_factor (float, optional): weighted velocity punishment. defaults to 0.01
         """
         if mode == 1:
-            self.curr_reward -= min(self.steps/100, penalty)
+            self.curr_reward -= 0.005
+            # print(self.max_steps*0.1, self.steps)
+            # if (self.max_steps-2)*0.1 <= self.steps:
+            #     print("failed to find goal")
+            #     self.curr_reward -= 10.0
         else:
             if action is None:
                 self.curr_reward -= punishment
             else:
                 lin_vel = action[0]
-                ang_vel = action[-1]
+                ang_vel = action[1]
                 reward = (lin_vel + (ang_vel * 0.001)) * consumption_factor
         
             self.curr_reward -= reward
@@ -532,8 +675,8 @@ class RewardCalculator:
         :param action: (np.ndarray (,2)): [0] = linear velocity, [1] = angular velocity
         """
         if self.last_action is not None:
-            curr_ang_vel = action[-1]
-            last_ang_vel = self.last_action[-1]
+            curr_ang_vel = action[1]
+            last_ang_vel = self.last_action[1]
 
             vel_diff = abs(curr_ang_vel - last_ang_vel)
             self.curr_reward -= (vel_diff**4) / 50
@@ -547,6 +690,32 @@ class RewardCalculator:
         """
         if action is not None and action[0] < 0:
             self.curr_reward -= penalty
+        elif self.curr_vel < 0:
+            self.curr_reward -= 0.2*self.curr_vel**2
+
+    def _reward_high_conc_force(self, penalty: float = 0.03):
+        if self.last_action is not None:
+            # if self.last_action[1]*self._curr_action[1] > 0.04:
+            #     self.angle += self.curr_avel
+            #     self.factor = max(min(self.factor*(1 + np.sign(self.angle)*self.curr_avel/(5.5+2*abs(self.curr_vel))),20),0.5)
+            #     fac = self.factor if np.sign(self.angle)*self.curr_avel > 0 else 0
+            # else:
+            #     self.angle *= 0.75
+            #     self.factor = max(0.5,self.factor*0.75)
+            #     fac = 0
+            #fac = 1
+            self.curr_reward -= penalty * (self.curr_vel*self.curr_avel)**2 if abs(self.curr_vel*self.curr_avel) > 1 else 0
+            #self.curr_reward -= penalty*abs((abs(self.curr_vel)+0.4)**2*self._curr_action[1]/2 + self._curr_action[1]*fac/2)
+    
+    def _reward_steering(self, penalty=0.01):
+        if self.last_action is not None:
+            self.angle += self.curr_avel/10
+            angle = 4*self.angle/(3*np.pi)
+            factor = min((0.6*angle)**6,25)
+            fac = 0.07*factor*abs(self._curr_action[1])/(0.8+abs(self.curr_vel)) if np.sign(self.angle)*self.curr_avel > 0 else 0
+            self.curr_reward -= fac  
+            if abs(self.last_action[1]*self._curr_action[1]) < 0.01:
+                self.angle *= (1-min(abs(self.curr_vel)/2,0.7))
 
     def _reward_abrupt_vel_change(self, vel_idx: int, factor: float = 1):
         """
@@ -560,3 +729,9 @@ class RewardCalculator:
 
             vel_diff = abs(curr_vel - last_vel)
             self.curr_reward -= ((vel_diff**4) / 100) * factor
+
+    def callback_stage_info(self,msg_stage_info):
+        # if msg_stage_info.data <= self.stage_info:
+        #     self.stage_info = 1
+        # else:
+        self.stage_info = msg_stage_info.data

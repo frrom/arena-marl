@@ -16,6 +16,7 @@ import rospkg
 import rospy
 import yaml
 
+
 # from rl_utils.envs.flatland_gym_env import (
 #     FlatlandEnv,
 # )
@@ -32,6 +33,7 @@ from stable_baselines3.common.policies import ActorCriticPolicy
 from task_generator.task_generator.robot_manager import init_robot_managers
 from task_generator.task_generator.tasks import get_task_manager, init_obstacle_manager
 from training.tools import train_agent_utils
+#from rosnav.model.feature_extractors import *
 
 # from .custom_mlp_utils import get_act_fn
 
@@ -167,7 +169,7 @@ def create_training_setup(config: dict, wandb_logger) -> dict:
             config=robot_train_params,
             n_envs=config["n_envs"],
         )
-
+        rospy.set_param("n_moves", hyper_params["train_max_steps_per_episode"])
         ### wandb logging
         if wandb_logger is not None:
             wandb_logger.update_hyperparameters(
@@ -202,7 +204,7 @@ def create_training_setup(config: dict, wandb_logger) -> dict:
                 robot_type=robot_name, managers=robot_manager_dict[f"sim_{i}"]
             )
 
-        env, observation_space = vec_env_create(
+        env, observation_space, action_space = vec_env_create(
             env_fn,
             agent_dict,
             task_managers=task_managers,
@@ -221,7 +223,8 @@ def create_training_setup(config: dict, wandb_logger) -> dict:
             hyper_params,
             config["n_envs"],
             wandb_logger,
-            #observation_space
+            observation_space,
+            action_space
         )
 
         # add configuration for one robot to robots dictionary
@@ -479,8 +482,8 @@ def initialize_hyperparameters(PATHS: dict, config: dict, n_envs: int) -> dict:
 
     # dynamically adapt n_steps according to batch size and n envs
     # then update .json
-    check_batch_size(n_envs, hyperparams["batch_size"], hyperparams["m_batch_size"])
-    hyperparams["n_steps"] = int(hyperparams["batch_size"] / n_envs)
+    #check_batch_size(n_envs, hyperparams["batch_size"], hyperparams["m_batch_size"])
+    #hyperparams["n_steps"] = int(hyperparams["batch_size"] / n_envs)
     if not rospy.get_param("debug_mode"):
         write_hyperparameters_json(hyperparams, PATHS)
     print_hyperparameters(hyperparams)
@@ -875,19 +878,29 @@ def load_vec_normalize(params: dict, PATHS: dict, env: VecEnv, eval_env: VecEnv)
             )
     return env, eval_env
 
+def clip_callback(dummy=None):
+    import rospy
+    st = rospy.get_param("/curr_stage", default = 1)
+    print("stage: ", st)
+    return 0.22
+    if st > 6:
+        return 0.25
+    else:
+        return 0.28 - (st-1)*0.06/5
 
 def choose_agent_model(
-    robot_name, PATHS, config, env, params, n_envs, wandb_logger=None, obs_space = None
+    robot_name, PATHS, config, env, params, n_envs, wandb_logger=None, obs_space = None, act_space = None
 ):
     # avoid circular import
     from rosnav.model.agent_factory import AgentFactory
+    
     from stable_baselines3 import PPO
 
     if config["resume"] is None:
         agent: Union[
             Type[BaseAgent], Type[ActorCriticPolicy]
         ] = AgentFactory.instantiate(
-            config["architecture_name"], #robot_model=robot_name TODOs
+            config["architecture_name"], obs_space, act_space#robot_model=robot_name TODOs
         )
         print(PATHS.get("tb"))
         if isinstance(agent, BaseAgent):
@@ -899,20 +912,28 @@ def choose_agent_model(
                 n_steps=params["n_steps"],
                 ent_coef=params["ent_coef"],
                 learning_rate=params["learning_rate"],
+                clip_range = clip_callback,
                 vf_coef=params["vf_coef"],
                 max_grad_norm=params["max_grad_norm"],
                 gae_lambda=params["gae_lambda"],
                 batch_size=params["m_batch_size"],
                 n_epochs=params["n_epochs"],
-                clip_range=params["clip_range"],
+                #clip_range=params["clip_range"],
                 tensorboard_log=PATHS.get("tb"),
                 wandb_logger=wandb_logger,
                 verbose=1,
             )
         elif issubclass(agent, ActorCriticPolicy):
+            policy_k = {}
+            exc = True
+            if exc:
+                features_extractor_kwargs= dict(features_dim=300,robot_model=robot_name)
+                policy_k = dict(features_extractor_class = EXTRACTOR_7,
+                features_extractor_kwargs = features_extractor_kwargs)
             model = PPO(
                 agent,
                 env,
+                policy_kwargs=policy_k,
                 gamma=params["gamma"],
                 n_steps=params["n_steps"],
                 ent_coef=params["ent_coef"],

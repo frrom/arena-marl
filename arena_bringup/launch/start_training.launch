@@ -14,13 +14,13 @@
   <arg name="train_mode"       default="true"/>
 
   <!-- To make the training more efficient make sure this step_size*laser_update_rate == 1  -->
-  <arg name="step_size" default="0.01"/>
+  <arg name="step_size" default="0.1"/>
   <arg name="update_rate" default="250"/>
   <arg name="show_viz"  default="true"/>
   <arg name="viz_pub_rate" default="30" />
 
   <!-- the folder name under the path arena-simulation-setup/maps  -->
-  <arg name="map_folder_name" default="gridworld" />
+  <arg name="map_folder_name" default="gridworld" /> <!--gridworld-->
   <arg name="map_path" default="$(find arena-simulation-setup)/maps/$(arg map_folder_name)/map.yaml" />
 
   <!-- the velocity of randomly genelized obstacles  -->

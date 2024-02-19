@@ -28,3 +28,7 @@
   map: "/gridworld"
 7:
   goal_stack: 5
+8:
+  goal_stack: 5
+9:
+  goal_stack: 5

@@ -99,6 +99,7 @@ class InitiateNewTrainStage(BaseCallback):
 
         self.verbose = verbose
         self.activated = bool(task_mode == "staged" or task_mode == "cases")
+        self.check = True
 
         if self.activated:
             rospy.set_param("/last_stage_reached", False)
@@ -140,7 +141,7 @@ class InitiateNewTrainStage(BaseCallback):
                 )
             print("success rate: ")
             print(np.asarray([sr for sr in EvalObject.last_success_rates.values()]))
-            if self._check_lower_threshold(EvalObject):
+            if self._check_lower_threshold(EvalObject) and self.check:
                 if self.verbose:
                     print("Dropped below lower threshold, going to previous stage.")
                 for i, pub in enumerate(self._publishers_previous):

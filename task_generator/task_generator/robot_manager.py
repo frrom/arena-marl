@@ -168,8 +168,9 @@ class RobotManager:
 
         return tmp_config_path
 
-    def update_map(self, new_map: OccupancyGrid):
-        self.map = new_map
+    def update_map(self, new_map: OccupancyGrid = None):
+        if new_map is not None:
+            self.map = new_map
         # a tuple stores the indices of the non-occupied spaces. format ((y,....),(x,...)
         self._free_space_indices = generate_freespace_indices(self.map)
 
@@ -204,12 +205,11 @@ class RobotManager:
         )
         self.move_robot(start_pos)
     
-    def get_random_pos(self, start_pos: Union[Pose2D, None] = None, max_dist = None, forbidden_zones=None):
+    def get_random_pos(self, start_pos: Union[Pose2D, None] = None, max_dist = None, forbidden_zones=None,no_zones = None,dont_care=False):
         start = start_pos if max_dist is not None else None
         goal_pos_ = Pose2D()
         (goal_pos_.x, goal_pos_.y, goal_pos_.theta,) = get_random_pos_on_map(
-            self._free_space_indices, self.map, self.ROBOT_RADIUS * 2,forbidden_zones=forbidden_zones, start_pos=start, max_dist=max_dist
-        )
+            self._free_space_indices, self.map, self.ROBOT_RADIUS * 2,forbidden_zones=forbidden_zones,no_zones=no_zones, start_pos=start, max_dist=max_dist, dont_care=dont_care)
         return goal_pos_
 
     def set_start_pos_goal_pos(

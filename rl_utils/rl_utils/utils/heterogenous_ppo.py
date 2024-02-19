@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Tuple
 import gym
 import numpy as np
 import rospy
+from std_msgs.msg import Int8
 import torch as th
 from rl_utils.rl_utils.envs.pettingzoo_env import FlatlandPettingZooEnv
 from rl_utils.rl_utils.utils.utils import call_service_takeSimStep
@@ -18,7 +19,113 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.utils import safe_mean
 from stable_baselines3.ppo.ppo import PPO
 from supersuit.vector.sb3_vector_wrapper import SB3VecEnvWrapper
+import random
 
+class helper_buffer():
+    def __init__(
+        self,
+        buffer_size: int,
+        observation_space,
+        action_space,
+        device,
+        gae_lambda: float = 1,
+        gamma: float = 0.99,
+        n_envs: int = 1,
+        num_robots = 4,
+    ):
+
+        self.buffer_size = buffer_size
+        self.observation_space = observation_space
+        self.action_space = action_space
+        self.obs_shape = observation_space.shape
+        self.action_dim = action_space.shape[0]
+        self.pos = 0
+        self.full = False
+        self.n_envs = n_envs
+        self.gae_lambda = gae_lambda
+        self.gamma = gamma
+        self.observations, self.actions, self.rewards, self.advantages = None, None, None, None
+        self.returns, self.dones, self.values, self.log_probs = None, None, None, None
+        self.generator_ready = False
+        self.num_robots = num_robots
+        self.reset()
+    
+    def _reset(self) -> None:
+        self.observations = np.zeros((self.buffer_size, self.n_envs) + self.obs_shape, dtype=np.float32)
+        self.actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
+        self.rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        #self.returns = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.infos = np.array([[None for _ in range(self.n_envs)] for _ in range(self.buffer_size)])
+        #self.advantages = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.generator_ready = False
+        self.pos = 0
+        
+    def reset(self) -> None:
+        self._reset()
+        self.g_observations = np.zeros((self.buffer_size, self.n_envs) + self.obs_shape, dtype=np.float32)
+        self.g_actions = np.zeros((self.buffer_size, self.n_envs, self.action_dim), dtype=np.float32)
+        self.g_rewards = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.g_dones = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.g_values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.g_log_probs = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.g_infos = np.array([[None for _ in range(self.n_envs)] for _ in range(self.buffer_size)])
+        self.pos2 = 0
+        self.full = False
+    def add(
+        self, obs: np.ndarray, action: np.ndarray, reward: np.ndarray, done: np.ndarray, value: th.Tensor, log_prob: th.Tensor, infos
+    ) -> None:
+        """
+        :param obs: Observation
+        :param action: Action
+        :param reward:
+        :param done: End of episode signal.
+        :param value: estimated value of the current state
+            following the current policy.
+        :param log_prob: log probability of the action
+            following the current policy.
+        """
+        if len(log_prob.shape) == 0:
+            # Reshape 0-d tensor to avoid error
+            log_prob = log_prob.reshape(-1, 1)
+
+        # Reshape needed when using multiple envs with discrete observations
+        # as numpy cannot broadcast (n_discrete,) to (n_discrete, 1)
+        if isinstance(self.observation_space, gym.spaces.Discrete):
+            obs = obs.reshape((self.n_envs,) + self.obs_shape)
+
+        self.observations[self.pos] = np.array(obs).copy()
+        self.actions[self.pos] = np.array(action).copy()
+        self.rewards[self.pos] = np.array(reward).copy()
+        self.dones[self.pos] = np.array(done).copy()
+        self.values[self.pos] = value.clone().cpu().numpy().flatten()
+        self.log_probs[self.pos] = log_prob #log_prob.clone().cpu().numpy()
+        self.infos[self.pos] = infos
+        self.pos += 1
+        if self.pos == self.buffer_size and not self.full:
+            indices = [i for i, element in enumerate(infos) if 'is_success' not in element.keys()]
+            hook = -1
+            for i in indices:
+                if i//self.num_robots > hook:
+                    hook = i//self.num_robots*self.num_robots
+                    self.g_observations[:,self.pos2:self.pos2+self.num_robots,:] = self.observations[:,hook:hook+self.num_robots,:]
+                    self.g_actions[:,self.pos2:self.pos2+self.num_robots,:] = self.actions[:,hook:hook+self.num_robots,:]
+                    self.g_rewards[:,self.pos2:self.pos2+self.num_robots] = self.rewards[:,hook:hook+self.num_robots]
+                    self.g_dones[:,self.pos2:self.pos2+self.num_robots] = self.dones[:,hook:hook+self.num_robots]
+                    self.g_values[:,self.pos2:self.pos2+self.num_robots] = self.values[:,hook:hook+self.num_robots]
+                    self.g_log_probs[:,self.pos2:self.pos2+self.num_robots] = self.log_probs[:,hook:hook+self.num_robots]
+                    self.g_infos[:,self.pos2:self.pos2+self.num_robots] = self.infos[:,hook:hook+self.num_robots]
+                    self.pos2 += self.num_robots
+                if self.pos2 >= self.n_envs:
+                    self.full = True
+                    break
+            if self.pos2 < self.n_envs:
+                self._reset()
+        return self.full 
+    def get(self):
+        return self.g_observations, self.g_actions, self.g_rewards, self.g_dones, self.g_values, self.g_log_probs, self.g_infos
 
 class Heterogenous_PPO(object):
     def __init__(
@@ -44,6 +151,8 @@ class Heterogenous_PPO(object):
         self.n_envs, self.ns_prefix = n_envs, "sim_"
         self.num_timesteps = 0
         self.verbose = verbose
+        self.collect_good_runs = False
+        
 
     def _setup_learn(
         self,
@@ -70,16 +179,23 @@ class Heterogenous_PPO(object):
         :return:
         """
         self.start_time = time.time()
-
+        self.stage_info = rospy.get_param("/curr_stage", default = 1)
+        self._stage_info = rospy.Subscriber("stage_info", Int8, self.callback_stage_info)
         ### First reset all environment states
+        
         for agent, ppo in self.agent_ppo_dict.items():
             # ppo.device = "cpu"
             # ppo.policy.cpu()
-
+            
             ppo.n_envs = self.agent_env_dict[agent].num_envs
-            ppo.n_steps = self.agent_param_dict[agent]["batch_size"] // ppo.n_envs
+            
+            factor = self.agent_param_dict[agent]["batch_size"] // ppo.n_envs // self.agent_param_dict[agent]["train_max_steps_per_episode"]
+            ppo.n_steps = int(self.agent_param_dict[agent]["train_max_steps_per_episode"] * max(1,factor))
+            if self.stage_info >= 6:
+                ppo.n_steps = int(self.agent_param_dict[agent]["train_max_steps_per_episode"]*(self.stage_info-5))
             # reinitialize the rollout buffer when ppo was loaded and does not
             # have the appropriate shape
+            #update_helper_buffer(int(self.agent_param_dict[agent]["train_max_steps_per_episode"])
             self._update_rollout_buffer(agent, ppo)
 
             if ppo.ep_info_buffer is None or reset_num_timesteps:
@@ -129,6 +245,31 @@ class Heterogenous_PPO(object):
 
         return total_timesteps, None
 
+    def callback_stage_info(self,msg_stage_info):
+        # if msg_stage_info.data <= self.stage_info:
+        #     self.stage_info = 1
+        # else:
+        
+        if self.stage_info != msg_stage_info.data:
+            self.wandb_logger.log_single(
+                "time/training_stage", self.stage_info, step=self.num_timesteps-1
+            )
+            self.wandb_logger.log_single(
+                "time/training_stage", msg_stage_info.data, step=self.num_timesteps
+            )
+            self.stage_info = msg_stage_info.data
+            print("updating rollout-buffer size")
+            for agent, ppo in self.agent_ppo_dict.items():
+                if self.stage_info >= 6:
+                    ppo.n_steps = int(self.agent_param_dict[agent]["train_max_steps_per_episode"]*(self.stage_info-5))
+                else:
+                    factor = self.agent_param_dict[agent]["batch_size"] // ppo.n_envs // self.agent_param_dict[agent]["train_max_steps_per_episode"]
+                    ppo.n_steps = int(self.agent_param_dict[agent]["train_max_steps_per_episode"] * max(1,factor))
+                self._update_rollout_buffer(agent, ppo)
+                ppo.rollout_buffer.reset()
+        self.collect_good_runs = False
+        #self.collect_good_runs = True if self.stage_info < 2 else False
+
     def collect_rollouts(
         self,
         callback: BaseCallback,
@@ -167,16 +308,26 @@ class Heterogenous_PPO(object):
         complete_collection_dict = {
             agent: False for agent in self.agent_ppo_dict.keys()
         }
-
+        timesteps = 0
         agent_actions_dict = {agent: None for agent in self.agent_ppo_dict.keys()}
         agent_dones_dict = {agent: None for agent in self.agent_ppo_dict.keys()}
         agent_values_dict = {agent: None for agent in self.agent_ppo_dict.keys()}
         agent_log_probs_dict = {agent: None for agent in self.agent_ppo_dict.keys()}
         agent_new_obs_dict = {agent: None for agent in self.agent_ppo_dict.keys()}
-
+        helper_buffer_dict = {agent: helper_buffer(
+            int(self.agent_param_dict[agent]["train_max_steps_per_episode"]/2),
+            ppo.observation_space,
+            ppo.action_space,
+            ppo.device,
+            gamma=ppo.gamma,
+            gae_lambda=ppo.gae_lambda,
+            n_envs=self.agent_env_dict[agent].num_envs,
+        ) for agent, ppo in self.agent_ppo_dict.items()}
         # only end loop when all replay buffers are filled
         while not all(complete_collection_dict.values()):
             for agent, ppo in self.agent_ppo_dict.items():
+                st = ppo.n_steps/2 if self.stage_info < 6 else ppo.n_steps
+                #ppo.ent_coef = 0.02 - 0.0199*timesteps/st
                 if (
                     ppo.use_sde
                     and ppo.sde_sample_freq > 0
@@ -198,6 +349,7 @@ class Heterogenous_PPO(object):
             for i in range(1, self.n_envs + 1):
                 call_service_takeSimStep(ns=self.ns_prefix + str(i))
 
+            
             for agent, ppo in self.agent_ppo_dict.items():
                 (
                     agent_new_obs_dict[agent],
@@ -210,41 +362,79 @@ class Heterogenous_PPO(object):
 
                 # only continue memorizing experiences if buffer is not full
                 # and if at least one robot is still alive
-                if not complete_collection_dict[
-                    agent
-                ] and not Heterogenous_PPO.check_robot_model_done(
-                    agent_dones_dict[agent]
-                ):
-                    ppo.num_timesteps += self.agent_env_dict[agent].num_envs
-                    ppo._update_info_buffer(infos)
+                if not complete_collection_dict[agent] and not Heterogenous_PPO.check_robot_model_done(
+                        agent_dones_dict[agent]):
+                    
+                    horizon = 1
+                    if self.collect_good_runs:
+                        horizon = 0
+                        done = helper_buffer_dict[agent].add(ppo._last_obs,
+                            agent_actions_dict[agent],
+                            rewards,
+                            ppo._last_dones,
+                            agent_values_dict[agent],
+                            agent_log_probs_dict[agent],infos)
+                        if done:
+                            obs, act, re, do, val, log, info = helper_buffer_dict[agent].get()
+                            helper_buffer_dict[agent].reset()
+                            horizon = int(self.agent_param_dict[agent]["train_max_steps_per_episode"]/2)
+                    
+                    for i in range(horizon):
+                        if self.collect_good_runs:
+                            o, a, r, d, v, l, infos = obs[i,:,:], act[i,:,:], re[i,:], do[i,:], th.tensor(val[i,:]), th.tensor(log[i,:]), info[i,:]
+                            ld = do[i-1,:] if i > 0 else d
+                        else:
+                            o,a,r,d,v,l,ld = ppo._last_obs, agent_actions_dict[agent], rewards, ppo._last_dones, agent_values_dict[agent], agent_log_probs_dict[agent],agent_dones_dict[agent]
+                        
+                        ppo.num_timesteps += self.agent_env_dict[agent].num_envs
+                        ppo._update_info_buffer(infos)
 
-                    if isinstance(ppo.action_space, gym.spaces.Discrete):
-                        # Reshape in case of discrete action
-                        actions = actions.reshape(-1, 1)
-
-                    rollout_buffers[agent].add(
-                        ppo._last_obs,
-                        agent_actions_dict[agent],
-                        rewards,
-                        ppo._last_dones,
-                        agent_values_dict[agent],
-                        agent_log_probs_dict[agent],
-                    )
-
+                        if isinstance(ppo.action_space, gym.spaces.Discrete):
+                            # Reshape in case of discrete action
+                            actions = actions.reshape(-1, 1)
+                        try:
+                            rollout_buffers[agent].add(o, a, r, d, v, l)
+                            # rollout_buffers[agent].add(
+                            #     ppo._last_obs,
+                            #     agent_actions_dict[agent],
+                            #     rewards,
+                            #     ppo._last_dones,
+                            #     agent_values_dict[agent],
+                            #     agent_log_probs_dict[agent],)
+                            n_steps += 1
+                        except:
+                            if self.collect_good_runs:
+                                break
+                            else:
+                                print("rolloutbuffer overflow")
+                                rollout_buffers = {
+                                    agent: ppo.rollout_buffer for agent, ppo in self.agent_ppo_dict.items()
+                                    }
+                                Heterogenous_PPO._reset_all_rollout_buffers(rollout_buffers)
+                                print(ppo.rollout_buffer.buffer_size)
                 ppo._last_obs = agent_new_obs_dict[agent]
                 ppo._last_dones = agent_dones_dict[agent]
+                if timesteps == st//2:
+                    ppo.ent_coef = self.agent_param_dict[agent]["ent_coef"] + random.choice([-1,0])*0.005
+                    # # Re-compile the policy to apply the changes
+                    # ppo.policy._build(lr_schedule=lambda x: 0.001)
+            
 
+            timesteps += 1
             # Give access to local variables
             if callback:
                 callback.update_locals(locals())
                 # Stop training if all model performances (mean rewards) are higher than threshold
-                if callback.on_step() is False:
-                    return False
+                for i in range(horizon):
+                    if callback.on_step() is False:
+                        return False
 
             if Heterogenous_PPO.check_for_reset(agent_dones_dict, rollout_buffers):
+                print("success rate: " + str(np.sum(rollout_buffers[agent].dones[rollout_buffers[agent].pos-1,:])/np.size(rollout_buffers[agent].dones[rollout_buffers[agent].pos-1,:])))
                 self.reset_all_envs()
+                timesteps = 0
 
-            n_steps += 1
+            
 
             self.check_for_complete_collection(complete_collection_dict, n_steps)
 
@@ -334,10 +524,12 @@ class Heterogenous_PPO(object):
                         "time/fps", fps, step=self.num_timesteps
                     )
                     self.wandb_logger.log_single(
-                        "time/total_timesteps",
-                        self.num_timesteps,
-                        step=self.num_timesteps,
+                        "time/total_timesteps", self.num_timesteps, step=self.num_timesteps
                     )
+                    self.wandb_logger.log_single(
+                        "time/training_stage", int(rospy.get_param("/curr_stage", default = 1)), step=self.num_timesteps
+                    )
+                    
                 print("---------------------------------------")
                 print(
                     "Iteration: {}\tTimesteps: {}\tFPS: {}".format(
@@ -454,9 +646,13 @@ class Heterogenous_PPO(object):
             #try:
             for agent, env in self.agent_env_dict.items():
                 # reset states
+                print("reset " + agent)
                 env.reset()
                 # retrieve new simulation state
                 self.agent_ppo_dict[agent]._last_obs = env.reset()
+            for agent, ppo in self.agent_ppo_dict.items():
+                ppo.ent_coef = self.agent_param_dict[agent]["ent_coef"] + random.choice([-1,1,0])*0.005
+            #     ppo.policy._build(lr_schedule=lambda x: 0.001)
             # perform one step in each simulation to update the scene
             for i in range(1, self.n_envs + 1):
                 call_service_takeSimStep(ns=self.ns_prefix + str(i))

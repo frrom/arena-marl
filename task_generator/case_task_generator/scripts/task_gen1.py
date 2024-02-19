@@ -42,7 +42,7 @@ class CaseTaskManager():
     def _free_quadrant(self, coords: np.ndarray, remove_crate: bool= False):
         if remove_crate:
             self.active_crates.remove(coords)
-            print("removed " + str(coords))
+            #print("removed " + str(coords))
         quadrant_type = self._get_quadrant_type(coords)
         self.g[coords[0], coords[1]] = FREE_GOAL if quadrant_type == OCCUPIED_GOAL else FREE_SHELF
 
@@ -58,10 +58,10 @@ class CaseTaskManager():
 
     ## MOVE CRATES ##
     def _can_spawn_crate(self):
-        return self._find(FREE_GOAL).size > 0 # True if there is a FREE_GOAL, False otherwise
+        return self._find(FREE_GOAL).size > 0 #or self._find(FREE_SHELF).size > 0 # True if there is a FREE_GOAL, False otherwise
 
     def _spawn_crates(self, nr_crates: int= 1, goals: np.ndarray= None):
-        grid_inds = self._find(FREE_GOAL)[:nr_crates,:] # Find free goals and restrict to however many crates we want to spawn
+        grid_inds = self._find(FREE_GOAL)[:nr_crates,:]# Find free goals and restrict to however many crates we want to spawn
         if nr_crates > grid_inds.shape[0]:
             print(f"Can't spawn {nr_crates} because there are only {grid_inds.shape[0]} free Goals. Spawning {grid_inds.shape[0]} crates instead.")
             nr_crates = grid_inds.shape[0]
@@ -95,7 +95,11 @@ class CaseTaskManager():
 
 
     def _generate_unpack_task(self, force_free_goal= True):
-        goal = self._get_random_quadrant_of_type(FREE_GOAL).squeeze()
+        if random.randint(0,2) == 0:
+            goal = self._get_random_quadrant_of_type(FREE_GOAL).squeeze()
+        else:
+            goal = self._get_random_quadrant_of_type(FREE_SHELF).squeeze()
+            self._occupy_quadrant(goal, spawn_crate=False)
         if not goal.size > 0:
             if not force_free_goal:
                 print('WARNING: The goal is occupied!')
@@ -161,12 +165,20 @@ class CaseTaskManager():
 
         return crate
 
-    def drop_crate(self, crate_index: int, drop_location: Union[Pose2D, np.ndarray]) -> Union[int, None]:
+    def drop_crate(self, crate_index: int, drop_location: Union[Pose2D, np.ndarray] = None) -> Union[int, None]:
+        if drop_location is None:
+            transit = self.get_transit_crates()
+            for crate in transit:
+                if crate.index == crate_index:
+                    drop_location = crate.goal
         if type(drop_location) is Pose2D: 
             drop_location = self.pose2d_to_numpy(drop_location)
         drop_successful = self.active_crates.drop_crate(crate_index, drop_location)
         if drop_successful:
-            self._occupy_quadrant(drop_location) 
+            if self.active_crates.get_crate_at_location(drop_location).delivered: # if crate is delivered
+                self._free_quadrant(drop_location, True)
+            else:
+                self._occupy_quadrant(drop_location) 
             if len(self.blocked) > 0:
                 self.blocked.remove(crate_index)
             return self.crate_index_to_robots.pop(crate_index)
@@ -184,7 +196,6 @@ class CaseTaskManager():
         crate_ids = []
         crate_locations = []
         crate_goals = []
-
         for crate in self.active_crates:
             if not crate.delivered:
                 crate_ids.append(crate.index)
@@ -193,8 +204,8 @@ class CaseTaskManager():
                 crate_goals.append(self.numpy_to_pose2d(crate.goal/resolution))
         
         if generate:
+            #self.empty_delivered_goal()
             nr_tasks = np.clip(self._num_active_tasks - len(crate_ids), 0, None)
-            self.empty_delivered_goal()
             self.generate_scenareo(nr_tasks, reset= False)
             return self.get_open_tasks(generate=False) # explicitly pass false in case it just gets stuck in loop
 
@@ -221,11 +232,17 @@ class CaseTaskManager():
 
             generated_tasks = 0
             while generated_tasks < nr_tasks:
-                free_goals = self._find(FREE_GOAL)
-                task_type = random.randint(0,2) == 0
-                # if not free_goals.shape[0] > 1:
-                #     task_type = False
-                success = self.generate_new_task(tasks[task_type])
+                trys = 0
+                while trys < 10:
+                    free_goals = self._find(FREE_GOAL)
+                    task_type = random.randint(0,2) == 0
+                    # if not free_goals.shape[0] > 1:
+                    #     task_type = False
+                    success = self.generate_new_task(tasks[task_type])
+                    if success:
+                        break
+                    trys += 1
+
                 generated_tasks += 1
                 
         elif type == 'manual':

@@ -56,8 +56,9 @@ class ObstaclesManager:
         # remove all existing obstacles generated before create an instance of this class
         self.remove_obstacles()
 
-    def update_map(self, new_map: OccupancyGrid):
-        self.map = new_map
+    def update_map(self, new_map: OccupancyGrid = None):
+        if new_map is not None:
+            self.map = new_map
         # a tuple stores the indices of the non-occupied spaces. format ((y,....),(x,...)
         self._free_space_indices = generate_freespace_indices(self.map)
 
@@ -353,7 +354,7 @@ class ObstaclesManager:
     def _generate_static_obstacle_polygon_yaml(self, vertices):
         # since flatland  can only config the model by parsing the yaml file, we need to create a file for every random obstacle
         tmp_folder_path = os.path.join(rospkg.RosPack().get_path(
-            'simulator_setup'), 'tmp_random_obstacles')
+            'arena-simulation-setup'), 'tmp_random_obstacles') #'simulator_setup'
         os.makedirs(tmp_folder_path, exist_ok=True)
         tmp_model_name = self.ns+"_polygon_static.model.yaml"
         yaml_path = os.path.join(tmp_folder_path, tmp_model_name)
@@ -380,7 +381,7 @@ class ObstaclesManager:
         f["collision"] = 'true'
         f["sensor"] = "false"
         f["type"] = "polygon"
-        f["points"] = vertices.astype(np.float).tolist()
+        f["points"] = vertices.astype(float).tolist()
 
         body["footprints"].append(f)
         # define dict_file
@@ -443,7 +444,7 @@ class ObstaclesManager:
 
         # since flatland  can only config the model by parsing the yaml file, we need to create a file for every random obstacle
         tmp_folder_path = os.path.join(rospkg.RosPack().get_path(
-            'simulator_setup'), 'tmp_random_obstacles')
+            'arena-simulation-setup'), 'tmp_random_obstacles') #'simulator_setup'
         os.makedirs(tmp_folder_path, exist_ok=True)
         if is_dynamic:
             tmp_model_name = self.ns+"_random_dynamic.model.yaml"

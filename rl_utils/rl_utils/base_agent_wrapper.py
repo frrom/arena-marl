@@ -65,6 +65,8 @@ class BaseDRLAgent(ABC):
         self.extend = rospy.get_param("choose_goal", default = False)
         self.ports = int(rospy.get_param("num_ports"))
         self.max_steps = int(rospy.get_param("n_moves"))
+        self.last_pos = None
+        self.reserving = 0
         #print(self.extend)
 
         robot_setting_path = os.path.join(
@@ -88,7 +90,9 @@ class BaseDRLAgent(ABC):
         self.observation_collector = ObservationCollector(
             self._ns_robot, self._num_laser_beams, self._laser_range
         )
-
+        self.obs_size = self.observation_collector.obs_size
+        self.msg_size = self.observation_collector.msg_size
+        self.sliding_window = np.zeros((self.observation_collector.window_length, self.observation_collector.obs_size-3))
         # for time controlling in train mode
         self._action_frequency = 1 / rospy.get_param("/robot_action_rate")
 
@@ -134,6 +138,8 @@ class BaseDRLAgent(ABC):
         # todo: What are the imports for?
         # import rosnav.model.custom_policy
         import rosnav.model.custom_sb3_policy
+        import rosnav.model.custom_lstm_policy
+        import rosnav.model.custom_policy
     def get_package_boolean(self):
         return self.package_bool
     def set_package_boolean(self, pack):
@@ -243,7 +249,9 @@ class BaseDRLAgent(ABC):
                     high=np.array([linear_range[1], angular_range[1]]),
                     dtype=np.float32,
                 )
+                #print("holonomic agent")
             else:
+                #print("non-holonomic agent")
                 linear_range_x, linear_range_y = (
                     linear_range["x"],
                     linear_range["y"],
@@ -266,9 +274,9 @@ class BaseDRLAgent(ABC):
                     dtype=float,
                 )
         if self.extend:
-            print("using extended action space")
-            self._action_space = BaseDRLAgent._stack_spaces((self._action_space, spaces.Box(low=0,high=5,shape=(1,),dtype=np.uint8,)))
-        self._action_space = BaseDRLAgent._stack_spaces((self._action_space, spaces.Box(low=0,high=2,shape=(self.ports,),dtype=np.uint8,)))
+            #print("using extended action space")
+            self._action_space = BaseDRLAgent._stack_spaces((self._action_space, spaces.Box(low=0,high=5,shape=(1,),dtype=float,))) # 6 for new model, 5 for old model
+        self._action_space = BaseDRLAgent._stack_spaces((self._action_space, spaces.Box(low=0,high=2,shape=(self.ports,),dtype=float,)))
 
     def setup_reward_calculator(self) -> None:
         """Sets up the reward calculator."""
