@@ -435,11 +435,14 @@ class ObservationCollector:
         y_relative = goal_pos.y - robot_pos.y
         x_relative = goal_pos.x - robot_pos.x
         rho = (x_relative**2 + y_relative**2) ** 0.5
-        theta = (np.arctan2(y_relative, x_relative) - robot_pos.theta + 4 * np.pi) % (
-            2 * np.pi
-        ) - np.pi
-        # angle =  np.arctan2(y_relative, x_relative) - robot_pos.theta
-        # theta = angle - math.trunc(angle/np.pi)*2*np.pi
+        if rospy.get_param("slinding_window", default = False):
+            angle =  np.arctan2(y_relative, x_relative) - robot_pos.theta
+            theta = angle - math.trunc(angle/np.pi)*2*np.pi
+        else:
+            theta = (np.arctan2(y_relative, x_relative) - robot_pos.theta + 4 * np.pi) % (
+                2 * np.pi
+            ) - np.pi
+        
         return rho, theta
 
     def get_sync_obs(self):

@@ -121,6 +121,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
         self.ports = int(rospy.get_param("num_ports"))
         self.extended_setup = rospy.get_param("choose_goal", default = True)
         self.obs_goals = int(rospy.get_param("/observable_task_goals"))
+        self.sw = rospy.get_param("slinding_window", default = False)
 
         self.metadata = {}
 
@@ -609,8 +610,8 @@ class FlatlandPettingZooEnv(ParallelEnv):
             if self.agent_object_mapping[agent]._agent_params["normalize"]:
                 merged = self.agent_object_mapping[agent].normalize_observations(merged)
 
-            ## add sliding window:    
-            #merged[obs_end:-msg_size] = self.agent_object_mapping[agent].sliding_window.flatten()
+            if self.sw:
+                merged[obs_end:-msg_size] = self.agent_object_mapping[agent].sliding_window.flatten()
             merged_obs[agent] = merged
             for i in range(1,self.agent_object_mapping[agent].sliding_window.shape[0]):
                 self.agent_object_mapping[agent].sliding_window[i,:] = self.agent_object_mapping[agent].sliding_window[i-1,:]

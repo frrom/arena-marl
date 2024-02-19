@@ -25,8 +25,7 @@ class Channel:
         self.ports = ports
         self.inrange = {}
         self.obs_goals = int(rospy.get_param("/observable_task_goals"))
-        self.force = force
-        #self.force = True
+        self.force = rospy.get_param("force_communication", default = False)
 
     def add_robot(self,robot:str, mapping):
         self.robots[robot] = mapping
@@ -55,7 +54,7 @@ class Channel:
 
     def send_message_request(self, source, ports):
         if source in self.inrange:
-            if int(ports[-1]) > 0 and np.array(self.inrange[source]).all() != 0:
+            if int(ports[-1]) > 0 and np.array(self.inrange[source]).all() != 0 and not self.force:
                 #print(source + " broadcasting")
                 for ins in self.inrange[source]:
                     self.messages["robot"+str(ins)]["broadcast"] = self.observations[source]

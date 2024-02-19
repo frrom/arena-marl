@@ -39,7 +39,6 @@ class Map:
         #Meta Stuff
         self.setup_name = setup_name
         self.random_map = random_map
-
         self.grid = None 
         self.grid_size = None 
         self.map = None 
@@ -81,10 +80,13 @@ class Map:
         normal = True
         #print(self.scale)
         #print(self.column_height)
-        if normal:
-            self.map = self.generate_map(self.upscale_grid(np.flip(self.grid,axis=0),self.scale), self.column_height)
-        else:
+        if "crossroad" in self.setup_name:
+            self.map = self.generate_map2(self.scale, self.shelf_rows)
+            #self.map = self.generate_map(self.upscale_grid(np.flip(self.grid,axis=0),self.scale), self.column_height)
+        elif "empty" in self.setup_name:
             self.map = self.generate_map3(self.scale, self.shelf_rows)
+        else:
+            self.map = self.generate_map(self.upscale_grid(np.flip(self.grid,axis=0),self.scale), self.column_height)
         self.grid_size = self.grid.shape
 
 

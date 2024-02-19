@@ -9,35 +9,20 @@ def main(args):
 
     # load configuration
     config = load_config(args.config)
-    setting = 2
-    # set debug_mode - this mode hinders the creation of several training directories and models
+    # do NOT change these parameters
     rospy.set_param("debug_mode", config["debug_mode"])
     rospy.set_param("n_moves", config["max_num_moves_per_eps"])
-    rospy.set_param("/curr_stage", 5)
-    rospy.set_param("plot_trjectories", True)
-    rospy.set_param("window_length", 2)
+    rospy.set_param("warehouse", True)
+    rospy.set_param("choose_goal", True)
+    
+    #editable parameters
+    rospy.set_param("plot_trjectories", False)
     rospy.set_param("slinding_window", False)
-    if setting == -1:
-        rospy.set_param("observable_task_goals", 0)
-        rospy.set_param("num_ports", 0)
-        rospy.set_param("warehouse", False)
-        rospy.set_param("choose_goal", False)
-    if setting == 0:
-        rospy.set_param("observable_task_goals", 5)
-        rospy.set_param("num_ports", 0)
-        rospy.set_param("warehouse", True)
-        rospy.set_param("choose_goal", True)
-    if setting == 1:
-        rospy.set_param("num_ports", 2)
-        rospy.set_param("observable_task_goals", 5)
-        rospy.set_param("warehouse", True)
-        rospy.set_param("choose_goal", False)
-    if setting == 2:
-        rospy.set_param("num_ports", 2)
-        rospy.set_param("observable_task_goals", 5)
-        rospy.set_param("warehouse", True)
-        rospy.set_param("choose_goal", True)
-
+    rospy.set_param("window_length", 2)
+    rospy.set_param("/curr_stage", 5)
+    rospy.set_param("num_ports", 2)
+    rospy.set_param("observable_task_goals", 5)
+    rospy.set_param("force_communication", False)
     # create dicts for all robot types with all necessary parameters
     robots = create_deployment_setup(config)
 

@@ -12,7 +12,7 @@ no_gpu: no
 # navigation task mode, chose from "random" or "staged"
 task_mode: "cases"
 # number of simulation timesteps
-n_timesteps: 40000000
+n_timesteps: 20000000
 max_num_moves_per_eps: 380 #380
 
 periodic_eval:
@@ -69,15 +69,14 @@ robots:
     # name of hyperparameter file located in the configs/hyperparameters directory
     hyperparameter_file: "jackal.json" # "default.json"
     # name of architecture defined in the Policy factory
-    #architecture_name: "AGENT_28" #old network use for working system!
-    #architecture_name: "AGENT_26" #current network use for working system!
-    architecture_name: "AGENT_27" #use for everything!!
+    #architecture_name: "AGENT_28" #CNN network architecture //change number of Lidar Beams
+    #architecture_name: "AGENT_26" #MLP architecture
+    architecture_name: "AGENT_27" #SW architecture
 
     # path to latest checkpoint; if provided the training will be resumed from that checkpoint
-    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/comm_lstm/jackal_2023_07_03__15_17" #old working system
-    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_10_08__16_08/jackal_2023_10_08__16_08" #current working system
-    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2023_11_29__14_45/jackal_2023_11_29__14_45"
-    resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MARL_AGENTS_2024_01_06__18_25/jackal_2024_01_06__18_25" #use for everything!!
+    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/CNN-agents/jackal_2023_07_03__15_17" 
+    #resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/MLP-agents/jackal_2023_10_08__16_08"
+    resume: "/home/frank/MARL_ws/src/planners/rosnav/agents/SW-agents/jackal_2024_01_06__18_25" 
   # rto:
   #   # number of robots of this type
   #   num_robots: 3
