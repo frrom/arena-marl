@@ -37,7 +37,8 @@ class Visualizer:
         self.ns=ns
         self.ns_prefix = f"/{ns}/" if ns else ""
         self._curr_stage = 1
-
+        print(self.ns_prefix)
+        print("test_init")
         #yaml resolution and origin information
         self.resolution = yaml['resolution']
         self.origin = yaml['origin']
@@ -178,7 +179,7 @@ class Visualizer:
         
         #Map Listener
         #Subscriber = rospy.Subscriber("gridworld", OccupancyGrid, self.callback)
-        open_tasks = rospy.Subscriber('sim_1/open_tasks', robot_goal_list, self.goal_list_to_map)
+        open_tasks = rospy.Subscriber('eval_sim/open_tasks', robot_goal_list, self.goal_list_to_map)
 
         #Marker Publisher
         topic = 'visualization_marker_array'
@@ -262,7 +263,8 @@ if __name__ == "__main__":
     #     ns = 'sim_1'
     # else:
     #     ns = args[1]
-    ns = 'sim_1'
+    print("right node")
+    ns = 'eval_sim'
     print(ns)
     mapyaml = '/'.join([rospkg.RosPack().get_path('arena-simulation-setup'), 'maps', 'gridworld', 'map.yaml'])
     #rospy.get_param('/ns')

@@ -137,10 +137,13 @@ class CrateStack:
         try:
             crate = self.remove(crate_location)
             self._in_transit.append(crate)
+            print(self._crate_map)
+            print(self._in_transit)
             return crate
 
         except KeyError as e:
             print(self._crate_map)
+            print(self._in_transit)
             warnings.warn(f'{crate_location} does not have a Crate.', CrateWarning)
 
     def drop_crate(self, crate_index: int, drop_location: np.ndarray = None):
@@ -149,18 +152,27 @@ class CrateStack:
 
         If drop_location is occupied or crate with crate_index is not in transit, warn CrateWarning.
         """
+        print(self._crate_map)
+        print(self._in_transit)
         for crate in self._in_transit:
             if crate.index == crate_index:
                 if drop_location is None:
                     drop_location = crate.goal
-                if drop_location.tobytes() in self._crate_map:
-                    warnings.warn("Can't drop crate on top of other crate", CrateWarning)
+                # if drop_location.tobytes() in self._crate_map:
+                #     warnings.warn("Can't drop crate on top of other crate", CrateWarning)
+                # else:
+                if drop_location.tobytes() not in self._crate_map.keys():
+                    try:
+                        self._crate_map[drop_location.tobytes()] = crate
+                        self._in_transit.remove(crate)
+                        #trns = drop_location[0] > 9
+                        crate.move(drop_location)
+                        return True
+                    except:
+                        return False
                 else:
-                    self._crate_map[drop_location.tobytes()] = crate
                     self._in_transit.remove(crate)
-                    #trns = drop_location[0] > 9
-                    crate.move(drop_location)
-                return True
+                    return False
         else:
             warnings.warn("Crate is not in transit.", CrateWarning)
             return False

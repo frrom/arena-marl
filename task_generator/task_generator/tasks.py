@@ -341,6 +341,7 @@ class CasesMARLTask(ABSMARLTask):
         self.env = map_path.split('/')[-2]
         self.map_path = '/'.join(map_path.split('/')[:-1])
         self.max_dist = 1.2
+        self.simple = True
         print(map_path)
         
         with open(f"{self.map_path}/map.yaml", "r") as stream:
@@ -491,6 +492,10 @@ class CasesMARLTask(ABSMARLTask):
             
             self.publisher_task_status(gen = False)
             return
+        stuck = False
+        if msg.robot_type[:3] == "st/":
+            msg.robot_type = msg.robot_type[3:]
+            stuck = True
         robots = self.robot_manager[msg.robot_type]
         robots: List[RobotManager] = robots
         for robot in robots:
@@ -499,35 +504,69 @@ class CasesMARLTask(ABSMARLTask):
         else:
             print([r.robot_id for r in robots])
             raise ValueError(f'Robot: type: {msg.robot_type} id: "{msg.robot_id}" is not recognized.')
-
+        if stuck:
+            #self.assign_goal(robot)
+            with self._map_lock:
+                robot.move_robot(robot.get_random_pos(start_pos = None, max_dist=None))
+            return
+        print(robot.crate_id)
         if action == crate_action.PICKUP:
             if 3 < self._curr_stage < 6:
                 new_goal = robot.get_random_pos(msg.robot_goal, 2.5)
                 #new_goal = self._generate_goal(msg.robot_goal, robot)
                 robot.publish_goal(new_goal.x, new_goal.y, 0)
+                self.publisher_task_status(self, gen = False)
                 return
             try:
-                ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= False)
-                crate = self.ctm.pickup_crate(msg.robot_goal, robot) # crate at msg.goal is picked up by robot
-                new_goal = crate.get_goal()
-                new_goal.x += 0.5
-                new_goal.y += 0.5
-
-                robot.publish_goal(new_goal.x + self.configs['origin'][0], new_goal.y + self.configs['origin'][1], new_goal.theta)
-                self.publisher_task_status(gen = (random.randint(0,4) == 0))
+                print(robot.curr_goal.x, robot.curr_goal.y)
+                #ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= False)
+                crate = self.ctm.pickup_crate(robot.curr_goal, robot) # crate at msg.goal is picked up by robot
+                #self.publisher_task_status(gen = (random.randint(0,4) == 0))
             except:
                 print("something went wrong")
+                return
+            new_goal = crate.get_goal()
+            new_goal.x += 0.5
+            new_goal.y += 0.5
+            robot.curr_goal = new_goal
+            print(robot.robot_id, " new goal: ", new_goal.x, new_goal.y)
+            robot.publish_goal(new_goal.x + self.configs['origin'][0], new_goal.y + self.configs['origin'][1], new_goal.theta)
+            self.check_tasks(robots)
             
         elif action == crate_action.DROPOFF:
             robot.publish_goal(0,0,0)
-            self.ctm.drop_crate(msg.crate_id)
-            self.publisher_task_status()
+            robot.curr_goal = Pose2D()
+            self.ctm.drop_crate(robot.crate_id)
+            if self._curr_stage == 7:
+                self.assign_goal(robot)
+                self.check_tasks(robots)
 
         elif action == crate_action.BLOCK:
             robot.publish_goal(msg.robot_goal.x, msg.robot_goal.y, 0)
             if self._curr_stage > 6:
                 self.ctm.block_goal(msg.crate_id)
-                self.publisher_task_status(gen = False)
+
+        self.publisher_task_status(gen = random.randint(1,3)==1)
+
+    def check_tasks(self, managers):
+        for robot in managers:
+            if robot.curr_goal == Pose2D():
+                self.assign_goal(robot)
+    def assign_goal(self,manager):
+        ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= False, show_blocked=True) # TODO check resolution parameter
+        if len(robot_goals) == 0:
+            _,_,_ = self.ctm.get_open_tasks(resolution= 1,generate= True)
+            return self.assign_goal(manager)
+        for idx, goal_pos in zip(ids,robot_goals):
+            if goal_pos.x != 0:
+                manager.publish_goal(goal_pos.x, goal_pos.y, goal_pos.theta)
+                manager.curr_goal = goal_pos
+                self.ctm.block_goal(idx)
+                manager.crate_id = idx
+                print(manager.robot_id, " assigned: ")
+                print(idx, goal_pos.x, goal_pos.y)
+                return
+        _,_,_ = self.ctm.get_open_tasks(resolution= 1,generate= True)
 
     def publisher_task_status(self, gen = True):
         ids, robot_goals, crate_goals = self.ctm.get_open_tasks(resolution= 1,generate= gen) # TODO check resolution parameter
@@ -797,7 +836,7 @@ class CasesMARLTask(ABSMARLTask):
         self.reset_flag = dict.fromkeys(self.reset_flag, False)
         #self.publish_close_goals(starts)
     def reset_single_target(self, robot_type: str, seed = 0):
-        self.simple = True
+        
         choices = self.shelves.copy()
         choices1 = choices[2:-2]
         choices2 = choices[:2] + choices[-2:]
@@ -927,8 +966,9 @@ class CasesMARLTask(ABSMARLTask):
             num = random.randint(self._num_robots-1,5)
         else:
             num = rospy.get_param("observable_task_goals", default = 5)
+            num = 6
         self.ctm.generate_scenareo(nr_tasks=num, type= 'random')
-        _, _robot_goals, _crate_goals = self.ctm.get_open_tasks(resolution= 1) # TODO check resolution parameter
+        ids , _robot_goals, _crate_goals = self.ctm.get_open_tasks(resolution= 1) # TODO check resolution parameter
         robot_goals_iter, crate_goals_iter = iter(_robot_goals), iter(_crate_goals)
         
         with self._map_lock:
@@ -968,23 +1008,28 @@ class CasesMARLTask(ABSMARLTask):
             if fail_times == max_fail_times:
                 raise Exception("reset error!")
         if self.simple or self._curr_stage == 9 or not self.extended_setup:
-            chosen_goals = self.find_best_matches(starts, _robot_goals)
+            chosen_goals, ids = self.find_best_matches(starts, _robot_goals, ids)
             idx = 0
             for _, robot_managers in self.robot_manager.items():
                     for manager in robot_managers:
                         try:
                             chosen_goal = chosen_goals[idx]
+                            manager.crate_id = ids[idx]
+                            self.ctm.block_goal(ids[idx])
+                            print(ids[idx])
+                            manager.curr_goal = chosen_goal
                             manager.publish_goal(chosen_goal.x, chosen_goal.y, chosen_goal.theta)
                         except:
                             print("not enough goals")
-                            start_pos, goal_pos = manager.set_start_pos_goal_pos(
-                                forbidden_zones=starts, max_dist = self.max_dist
-                            )
-                            starts[idx] = (
-                                start_pos.x,
-                                start_pos.y,
-                                manager.ROBOT_RADIUS * 2.25,
-                            )
+                            manager.publish_goal(0,0,0)
+                            # start_pos, goal_pos = manager.set_start_pos_goal_pos(
+                            #     forbidden_zones=starts, max_dist = self.max_dist
+                            # )
+                            # starts[idx] = (
+                            #     start_pos.x,
+                            #     start_pos.y,
+                            #     manager.ROBOT_RADIUS * 2.25,
+                            # )
                         idx += 1
             self.reset_flag = dict.fromkeys(self.reset_flag, False)
             self.publish_close_goals(starts)
@@ -995,22 +1040,27 @@ class CasesMARLTask(ABSMARLTask):
     def distance(self, pose1, pose2):
         return math.sqrt((pose1.x - pose2.x)**2 + (pose1.y - pose2.y)**2)
 
-    def find_best_matches(self, start_positions, goal_positions):
+    def find_best_matches(self, start_positions, goal_positions, ids):
         matches = []
+        id_matches = []
         goal_positions = [p for p in goal_positions if not (p.x == 0 and p.y == 0)]
         goal_positions_copy = goal_positions.copy() # make a copy of goal_positions to preserve original order
         for start_pose in start_positions:
             best_goal_pose = None
+            best_id = 0
             min_distance = float('inf')
-            for goal_pose in goal_positions_copy:
+            for goal_pose, i in zip(goal_positions_copy,ids):
                 d = self.distance(Pose2D(start_pose[0], start_pose[1], 0), goal_pose)
                 if d < min_distance:
                     best_goal_pose = goal_pose
+                    best_id = i
                     min_distance = d
             if best_goal_pose is not None:
                 matches.append(best_goal_pose)
+                id_matches.append(best_id)
                 goal_positions_copy.remove(best_goal_pose)
-        return matches
+                ids.remove(best_id)
+        return matches, id_matches
     
     def find_best_matches2(self, start_positions, goal_positions):
         start_n = len(start_positions)

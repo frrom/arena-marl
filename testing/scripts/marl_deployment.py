@@ -16,10 +16,10 @@ def main(args):
     rospy.set_param("choose_goal", True)
     
     #editable parameters
-    rospy.set_param("plot_trjectories", False)
-    rospy.set_param("slinding_window", False)
+    rospy.set_param("plot_trjectories", True)
+    rospy.set_param("slinding_window", True)
     rospy.set_param("window_length", 2)
-    rospy.set_param("/curr_stage", 5)
+    rospy.set_param("/curr_stage", 7)
     rospy.set_param("num_ports", 2)
     rospy.set_param("observable_task_goals", 5)
     rospy.set_param("force_communication", False)

@@ -502,7 +502,7 @@ class FlatlandPettingZooEnv(ParallelEnv):
             obs_end = self.obs_end[agent]
             choice = self.curr_actions[agent][2]#*6/5
             r=0
-            if self.extended_setup and self.stage_info < 9 and _dict["goal_in_robot_frame"][0] == 0:
+            if self.extended_setup and self.stage_info != 7 and _dict["goal_in_robot_frame"][0] == 0:
                 length = len(_dict["ids"])-1
                 if length == -1:
                     self.agent_publisher(crate_action(crate_action.PICKUP,"pub"),r_type="refresh")
@@ -558,45 +558,48 @@ class FlatlandPettingZooEnv(ParallelEnv):
             
             merged[obs_end-6] = curr_vel
             merged[obs_end-9:obs_end-7] = self.curr_actions[agent][:2] #change that later
-            if reward_info["is_success"] == 1 and 6 < self.stage_info < 9:
+            if reward_info["is_success"] == 1 and self.stage_info > 6 and _dict["goal_in_robot_frame"][0] != 0:
                 #set the package boolean True and save goal point, if robot reaches goal and doesnt have a package
                 #set package boolean False and release goal, if robot reaches goal and has a package
+                
                 if self.agent_object_mapping[agent].get_package_boolean():
                     print(self.agent_object_mapping[agent]._ns_robot + " dropoff")
                     self.agent_object_mapping[agent].set_package_boolean(False)
-                    crate_id = self.agent_object_mapping[agent].get_agent_goal()[-1] if self.extended_setup else reward_info["crate_id"]
-                    self.agent_publisher(crate_action(crate_action.DROPOFF,"pub"), idx= crate_id,
-                    r_type=self.agent_object_mapping[agent].robot_model,r_id=self.agent_object_mapping[agent]._ns_robot, goal = Pose2D())
-                    self.agent_object_mapping[agent].set_agent_goal([Pose2D()])
                     reward += 30
-                    if self.stage_info > 7:
-                        reward_info["is_done"] = False
-                        self.agent_object_mapping[agent].set_reserved_status(False)
-
+                    reward_info["is_done"] = False
+                    self.agent_object_mapping[agent].set_reserved_status(False)
+                    if 7 < self.stage_info:
+                        crate_id = self.agent_object_mapping[agent].get_agent_goal()[-1] if self.extended_setup else reward_info["crate_id"]
+                        self.agent_publisher(crate_action(crate_action.DROPOFF,"pub"), idx= crate_id,
+                        r_type=self.agent_object_mapping[agent].robot_model,r_id=self.agent_object_mapping[agent]._ns_robot, goal = Pose2D())
+                        self.agent_object_mapping[agent].set_agent_goal([Pose2D()])
+                    else:
+                        self.agent_publisher(crate_action(crate_action.DROPOFF,"pub"), idx= 0, r_type=self.agent_object_mapping[agent].robot_model,
+                        r_id=self.agent_object_mapping[agent]._ns_robot, goal = _dict["robot_pose"])
+                        time.sleep(0.2)
                 else:
                     print(self.agent_object_mapping[agent]._ns_robot + " pickup")
                     #print(self.agent_object_mapping[agent].get_agent_goal())
                     reward_info["is_done"] = False
                     self.agent_object_mapping[agent].set_package_boolean(True)
-                    if self.extended_setup:
-                        crate_id = self.agent_object_mapping[agent].get_agent_goal()[-1]
-                        pub_goal = self.agent_object_mapping[agent].get_agent_goal()[0]
-                        self.agent_object_mapping[agent].set_agent_goal([self.agent_object_mapping[agent].get_agent_goal()[1], crate_id])
+                    if 7 < self.stage_info :
+                        if self.extended_setup:
+                            crate_id = self.agent_object_mapping[agent].get_agent_goal()[-1]
+                            pub_goal = self.agent_object_mapping[agent].get_agent_goal()[0]
+                            self.agent_object_mapping[agent].set_agent_goal([self.agent_object_mapping[agent].get_agent_goal()[1], crate_id])
+                        else:
+                            #merged[-3:-1] = _dict["crates_in_robot_frame"][int(reward_info["crate"]),:]
+                            self.agent_object_mapping[agent].set_agent_goal(_dict["obs_crates"][int(reward_info["crate"])])
+                            crate_id = reward_info["crate_id"]
+                            pub_goal = _dict["obs_goals"][int(reward_info["crate"])]
+                        self.agent_publisher(crate_action(crate_action.PICKUP,"pub"), idx = crate_id, r_type=self.agent_object_mapping[agent].robot_model,
+                        r_id=self.agent_object_mapping[agent]._ns_robot, goal = pub_goal)
                     else:
-                        #merged[-3:-1] = _dict["crates_in_robot_frame"][int(reward_info["crate"]),:]
-                        self.agent_object_mapping[agent].set_agent_goal(_dict["obs_crates"][int(reward_info["crate"])])
-                        crate_id = reward_info["crate_id"]
-                        pub_goal = _dict["obs_goals"][int(reward_info["crate"])]
-                    self.agent_publisher(crate_action(crate_action.PICKUP,"pub"), idx = crate_id, r_type=self.agent_object_mapping[agent].robot_model,
-                    r_id=self.agent_object_mapping[agent]._ns_robot, goal = pub_goal)
+                        self.agent_publisher(crate_action(crate_action.PICKUP,"pub"), idx = 0, r_type=self.agent_object_mapping[agent].robot_model,
+                        r_id=self.agent_object_mapping[agent]._ns_robot, goal = _dict["robot_pose"])
+                        time.sleep(0.2)
                 self.agent_object_mapping[agent].reward_calculator.reset()
-            # elif reward_info["is_success"] == 1 and 3 < self.stage_info < 6 and not self.agent_object_mapping[agent].get_reserved_status():
-            #     reward_info["is_done"] = False
-            #     self.agent_object_mapping[agent].set_reserved_status(True)
-            #     self.agent_publisher(crate_action(crate_action.PICKUP,"pub"), idx = 0, r_type=self.agent_object_mapping[agent].robot_model,
-            #     r_id=self.agent_object_mapping[agent]._ns_robot, goal = _dict["robot_pose"])
-                
-            
+
             if reward_info["is_done"]:
                 if not self.dones[agent]:
                     # if reward_info["is_success"] == 1:
@@ -604,7 +607,9 @@ class FlatlandPettingZooEnv(ParallelEnv):
                     # else: 
                     #     print(agent + " collision")
                     self.dones[agent] = True
-
+            if reward_info["is_stuck"]:
+                self.agent_publisher(crate_action(crate_action.PICKUP,"pub"), idx = 0, r_type= "st/" + self.agent_object_mapping[agent].robot_model,
+                r_id=self.agent_object_mapping[agent]._ns_robot, goal = _dict["robot_pose"])
             pack_trafo = 1 if self.agent_object_mapping[agent].get_package_boolean() else 0
             merged[obs_end-1] = pack_trafo
             if self.agent_object_mapping[agent]._agent_params["normalize"]:

@@ -14,11 +14,11 @@ task_mode: "cases"
 cases_grid_map_path: "/home/u20/MARL_ws/src/forks/arena-simulation-setup/maps/warehouse_1_cases/grid.npy"
 # number of simulation timesteps
 n_timesteps: 20000000
-max_num_moves_per_eps: 1000
+max_num_moves_per_eps: 10000
 
 periodic_eval:
   # max number of steps per episode
-  max_num_moves_per_eps: 1000
+  max_num_moves_per_eps: 10000
   # number of evaluation episodes
   n_eval_episodes: 200 #100
   # evaluation frequency, evaluation after every n_envs * 20000 timesteps
@@ -42,7 +42,7 @@ tb: false
 robots:
   jackal:
     # number of robots of this type
-    num_robots: 8
+    num_robots: 4
     # name of hyperparameter file located in the configs/hyperparameters directory
     hyperparameter_file: "jackal.json" # "default.json"
     # name of architecture defined in the Policy factory

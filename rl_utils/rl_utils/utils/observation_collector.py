@@ -363,7 +363,7 @@ class ObservationCollector:
                 rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
                     goal, self._robot_pose
                 )
-            if goal_dists[-1] == 0:
+            if goal_dists[-1] == 0 and i < self.obs_goals:
                 pub_goals[i,:] = [rho, theta]
                 rho, theta = ObservationCollector._get_goal_pose_in_robot_frame(
                 self._crate_list[i], self._robot_pose)

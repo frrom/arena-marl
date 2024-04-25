@@ -66,6 +66,8 @@ class RobotManager:
 
         self.robot_id = robot_id
         self.robot_type = robot_type
+        self.crate_id = 0
+        self.curr_goal = Pose2D()
 
         self.is_training_mode = rospy.get_param("/train_mode")
         self.step_size = rospy.get_param("step_size")

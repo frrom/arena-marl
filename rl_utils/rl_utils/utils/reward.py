@@ -114,6 +114,7 @@ class RewardCalculator:
         self.info["is_success"] = 0
         self.info["crate"] = self.crate
         self.info["crash"] = False
+        self.info["is_stuck"] = False
 
     def get_reward(
         self,
@@ -523,7 +524,7 @@ class RewardCalculator:
             #     punish += min(i*0.1/100, 0.1)
             # self.curr_reward -= punish
             self.info["crash"] = True
-            if self.stage_info > 6:
+            if self.stage_info > 7:
                 self.curr_reward -= punishment
             
                 if not self._extended_eval:
@@ -569,13 +570,14 @@ class RewardCalculator:
             #         self.curr_reward -= 0.1*np.exp(0.5*(self.stage_info-3))*(self.counter2-10)
             # else:
             #     self.counter2 = max(0,self.counter2 - 1)
-            if self.counter > 20:
+            if self.counter > 40:
                 if self.stage_info == 8:
                     self.info["is_done"] = True
                     self.info["done_reason"] = 1
                     self.info["is_success"] = 0
                     self.curr_reward -= 10.0
                 else:
+                    self.info["is_stuck"] = True
                     self.curr_reward -= 0.2
 
     def _reward_distance_traveled(

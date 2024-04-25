@@ -26,6 +26,7 @@ class Visualizer:
         #TODO: replace this with a subscriber to /gridworld, taskmanager should update /gridworld
         #Add your path to ignc map
         self.map = Map(path=path)
+        print("test")
         topic = 'visualization_marker_array'
         self.publisher = rospy.Publisher(topic, MarkerArray, queue_size=self.map.grid_size[0]*self.map.grid_size[1])
         rospy.init_node('markers_patrick')

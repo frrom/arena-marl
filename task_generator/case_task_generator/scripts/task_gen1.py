@@ -25,6 +25,7 @@ class CaseTaskManager():
         self.crate_index_to_robots:  Dict[int, RobotManager]= {}
         self._num_active_tasks = num_active_tasks # simultaneos active tasks to post in task manager
         self.blocked = []
+        self.stored = []
     
 
     ## MANAGE QUADRANTS ##
@@ -90,16 +91,21 @@ class CaseTaskManager():
             print('No free goals to spawn crate in')
             return False
         else:
-            self._spawn_crates(1, goal)
-            return True
+            try:
+                self._spawn_crates(1, goal)
+                return True
+            except:
+                return False
 
 
     def _generate_unpack_task(self, force_free_goal= True):
-        if random.randint(0,2) == 0:
+        if random.randint(0,1) == 0:
             goal = self._get_random_quadrant_of_type(FREE_GOAL).squeeze()
         else:
             goal = self._get_random_quadrant_of_type(FREE_SHELF).squeeze()
-            self._occupy_quadrant(goal, spawn_crate=False)
+            for transit in self.get_transit_crates():
+                if np.equal(transit.goal,goal).all():
+                    return False
         if not goal.size > 0:
             if not force_free_goal:
                 print('WARNING: The goal is occupied!')
@@ -171,17 +177,34 @@ class CaseTaskManager():
             for crate in transit:
                 if crate.index == crate_index:
                     drop_location = crate.goal
+                    break
         if type(drop_location) is Pose2D: 
             drop_location = self.pose2d_to_numpy(drop_location)
         drop_successful = self.active_crates.drop_crate(crate_index, drop_location)
         if drop_successful:
-            if self.active_crates.get_crate_at_location(drop_location).delivered: # if crate is delivered
-                self._free_quadrant(drop_location, True)
-            else:
-                self._occupy_quadrant(drop_location) 
-            if len(self.blocked) > 0:
-                self.blocked.remove(crate_index)
-            return self.crate_index_to_robots.pop(crate_index)
+            # if self.active_crates.get_crate_at_location(drop_location).delivered: # if crate is delivered
+            #     self._free_quadrant(drop_location, True)
+            # else:
+            #     self._occupy_quadrant(drop_location)
+            #crate = self.active_crates.get_crate_at_location(drop_location)
+            if crate.delivered: # if crate is delivered
+                if self._get_quadrant_type(drop_location) == FREE_SHELF:
+                    self._occupy_quadrant(drop_location)
+                    goal = self._get_random_quadrant_of_type(FREE_SHELF).squeeze()
+                    if not goal.size > 0:
+                        goal = self._get_random_quadrant_of_type(FREE_GOAL).squeeze()
+                        if not goal.size > 0:
+                            goal = self._get_random_quadrant_of_type(OCCUPIED_GOAL).squeeze()
+                    #crate = self.active_crates.get_crate_at_location(drop_location)
+                    crate.set_new_goal(goal)
+                    #generate new task
+                # else:
+                #     self._free_quadrant(drop_location, True)  
+        else:
+            print("wrong drop location")
+        if len(self.blocked) > 0:
+            self.blocked.remove(crate_index)
+        return self.crate_index_to_robots.pop(crate_index)
         
     def get_transit_crates(self):
         return self.active_crates._in_transit
@@ -189,7 +212,7 @@ class CaseTaskManager():
     def block_goal(self,id):
         self.blocked.append(id)
 
-    def get_open_tasks(self, resolution= 1, generate= False):
+    def get_open_tasks(self, resolution= 1, generate= False, show_blocked=False):
         """
         gets currently open tasks, if generate=True will generate new ones in the case of not having any available
         """
@@ -200,7 +223,7 @@ class CaseTaskManager():
             if not crate.delivered:
                 crate_ids.append(crate.index)
                 #print(crate.current_location)
-                crate_locations.append(self.numpy_to_pose2d(crate.current_location/resolution)) if crate.index not in self.blocked else crate_locations.append(self.numpy_to_pose2d(np.array([-0.5,-0.5])))
+                crate_locations.append(self.numpy_to_pose2d(crate.current_location/resolution)) if not show_blocked or crate.index not in self.blocked else crate_locations.append(self.numpy_to_pose2d(np.array([-0.5,-0.5])))
                 crate_goals.append(self.numpy_to_pose2d(crate.goal/resolution))
         
         if generate:
@@ -233,11 +256,18 @@ class CaseTaskManager():
             generated_tasks = 0
             while generated_tasks < nr_tasks:
                 trys = 0
-                while trys < 10:
-                    free_goals = self._find(FREE_GOAL)
-                    task_type = random.randint(0,2) == 0
-                    # if not free_goals.shape[0] > 1:
-                    #     task_type = False
+                while trys < 15:
+                    task_type = random.randint(0,1) < 2
+                    # if len(self.stored) > 0 and random.randint(0,1) == 1:
+                    #     if task_type != 1:
+                    #         goal = self._get_random_quadrant_of_type(FREE_SHELF).squeeze()
+                    #     else:
+                    #         goal = self._get_random_quadrant_of_type(FREE_GOAL).squeeze()
+                    #     if goal.size > 0:
+                    #         crate = self.active_crates.get_crate_at_location(self.stored[0])
+                    #         crate.set_new_goal(goal)
+                    #         self.stored.pop(0)
+                    #         break
                     success = self.generate_new_task(tasks[task_type])
                     if success:
                         break
